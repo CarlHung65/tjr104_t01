@@ -1,0 +1,15 @@
+folium>=0.20,<0.21
+sqlalchemy>=2.0,<3.0
+pymysql>=1.1,<2.0
+pandas>=2.2.3,<2.3
+numpy>=1.26,<2.2
+pyarrow>=21,<24
+streamlit>=1.30,<1.50
+beautifulsoup4>=4.12,<5.0
+requests>=2.31,<3.0
+python-dotenv>=1.0,<2.0
+googlemaps>=4.10,<5.0
+selenium>=4.20,<5.0
+webdriver-manager>=4.0,<5.0
+geopandas>=0.14,<1.0
+mysqlclient>=2.2,<3.0
