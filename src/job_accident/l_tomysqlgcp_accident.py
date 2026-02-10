@@ -87,7 +87,10 @@ def load_cmp_to_new_GCP_mysql(main_dict, party_dict):
     engine = create_engine(GCP_DB_URL,pool_pre_ping=True,  # 核心：確保連線有效
                            pool_recycle=300,                # 每 5 分鐘強制重整連線
                            connect_args={'connect_timeout': 60})
+    # 使用 Inspector 檢查目前資料庫裡已經存在哪些表
+    # 參數為連線引擎, 跟資料庫連線, 並建立一個探測物件
     inspector = inspect(engine)
+    # get_table_names()會向SQL發出指令, 回傳所有TABLE,以List形式儲存,只抓表名
     existing_tables = inspector.get_table_names()
 
     tables_to_sync = [
@@ -112,6 +115,7 @@ def load_cmp_to_new_GCP_mysql(main_dict, party_dict):
                     print(f"检测到新表 {final_table}，正在初始化結構...")
                     # 這裡只負責「建立表」並「匯入第一次資料」
                     # 為了避免 1170 錯誤，我們還是得在建表時指定 VARCHAR，否則後續設 PK 會失敗
+                    #填寫 fail 是一種保險機制。萬一在極短的時間內有其他組員建了同名的表，或者你的 inspector 判斷失誤，程式會直接報錯停下來，而不會去動到現有的資料。
                     df.to_sql(final_table, con=connection, if_exists='fail', index=False, 
                               dtype={'accident_id': VARCHAR(16)})
                     print(f"⚠️ {final_table} 已建立，請記得執行 setting_new_pkfk 設定結構。")
@@ -123,15 +127,27 @@ def load_cmp_to_new_GCP_mysql(main_dict, party_dict):
                     df.to_sql(tmp_table, con=connection, if_exists='replace', index=False, chunksize=200)
 
                     # 2. 生成更新語句 (排除 accident_id)
+                    # columns會拿到dataframe裡的所有欄位名稱(accident_id排除在外)
                     columns = [f"`{c}`" for c in df.columns if c != 'accident_id']
+                    # 把每個欄位串接起來
                     update_stmt = ", ".join([f"{c}=VALUES({c})" for c in columns])
 
                     # 3. 執行 UPSERT (這行生效的前提是該表已有 PK)
+                    # 情況一：資料庫是空的（新案號）
+                    # MySQL 檢查 final_table，沒發現 20260208001。
+                    # 執行 INSERT。
+                    # 結果：資料庫多了一列新資料。
+                    # 情況二：資料庫已有這筆資料，但人數是 3（重複案號）
+                    # MySQL 檢查 final_table，發現 20260208001 已經存在。
+                    # 觸發 ON DUPLICATE KEY。
+                    # 執行 UPDATE death_count = 5。
+                    # 結果：原本那一行的人數從 3 被修正為 5，ID 維持不變。
                     upsert_sql = f"""
                         INSERT INTO {final_table} ({", ".join([f"`{c}`" for c in df.columns])})
                         SELECT * FROM {tmp_table}
                         ON DUPLICATE KEY UPDATE {update_stmt};
                     """
+                    
                     connection.execute(text(upsert_sql))
                     connection.execute(text(f"DROP TABLE {tmp_table};"))
             
@@ -140,3 +156,6 @@ def load_cmp_to_new_GCP_mysql(main_dict, party_dict):
     except Exception as e:
         print(f"匯入失敗: {e}")
         return None
+    
+    
+
