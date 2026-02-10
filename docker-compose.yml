@@ -45,7 +45,7 @@ services:
     restart: "no"
     command: >
       bash -c "
-      airflow db init &&
+      airflow db migrate &&
       airflow users create \
         --username ${AIRFLOW_ADMIN_USER} \
         --password ${AIRFLOW_ADMIN_PASSWORD} \
@@ -55,15 +55,15 @@ services:
         --email ${AIRFLOW_ADMIN_EMAIL} || true
       "
 
-  airflow-webserver:
+  airflow-api-server:
     <<: *airflow-common
-    container_name: airflow_webserver
+    container_name: airflow_api_server
     depends_on:
       airflow-init:
         condition: service_completed_successfully
     ports:
-      - "8080:8080"
-    command: webserver
+      - "18080:8080"
+    command: api-server
 
   airflow-scheduler:
     <<: *airflow-common
