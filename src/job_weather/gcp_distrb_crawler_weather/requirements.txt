@@ -1,0 +1,12 @@
+pre-commit
+retry-requests
+cryptography
+python-dotenv
+pandas
+requests
+bs4
+sqlalchemy
+pymysql
+pyarrow
+google-cloud-storage
+apache-airflow-providers-google
