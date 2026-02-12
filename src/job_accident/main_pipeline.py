@@ -1,3 +1,12 @@
+import sys
+import os 
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# 假設你的結構是 src/job_accident/main_pipeline.py，我們要往上爬兩層到 src
+src_path = os.path.abspath(os.path.join(current_dir, "../../"))
+if src_path not in sys.path:
+    sys.path.append(src_path)
+
+    
 from e_crawler_accident import (auto_scrape_and_download_old_data,
                      auto_scrape_recent_data,
                      read_old_data_to_dataframe)
@@ -12,10 +21,10 @@ from l_tomysqlgcp_accident import (
 from l_setpkfk_accident import (
                            setting_pkfk,
                            setting_new_pkfk)
-import os 
+
 import pandas as pd
 from sqlalchemy import inspect,text,create_engine
-from create_accident_table import (SAVE_OLD_DATA_DIR,
+from create_table.create_accident_table import (SAVE_OLD_DATA_DIR,
                     SEQ_PAGE_URL,
                     SAVE_NEW_DATA_DIR,
                     GCP_DB_URL)
