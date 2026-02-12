@@ -33,14 +33,16 @@ def is_db_ready(engine):
         return False
     return False
 
-
-if __name__ == "__main__":
-    print("程式開始執行...")
+def run_accident_full_pipeline():
+    """將原本 if __name__ == "__main__" 的邏輯包進來"""
+    print("Airflow 任務開始執行...")
     engine = create_engine(GCP_DB_URL)
 
+    # 1. 檢查資料庫狀態 (原本的 is_db_ready 邏輯)
     if not is_db_ready(engine):
         print("📁 偵測到資料庫尚未初始化，準備匯入歷年資料...") 
-        
+        # ... (中間那一大段歷年資料處理邏輯) ...
+        # 注意：在 Docker 中 SAVE_OLD_DATA_DIR 必須是相對路徑或容器內路徑
         os.makedirs(SAVE_OLD_DATA_DIR, exist_ok=True)
         os.makedirs(SAVE_NEW_DATA_DIR, exist_ok=True)
         files = os.listdir(SAVE_OLD_DATA_DIR)
@@ -69,13 +71,23 @@ if __name__ == "__main__":
             if db_engine:
                 setting_pkfk(db_engine)
 
-    
-    new=auto_scrape_recent_data()
-    trans=transform_data_dict(new)
-    cleaned=car_crash_old_data_clean(trans)
+    # 2. 抓取近期資料並上傳
+    print("🚀 開始抓取近期資料...")
+    new = auto_scrape_recent_data()
+    trans = transform_data_dict(new)
+    cleaned = car_crash_old_data_clean(trans)
     clean1 = cleaned['main']
     clean2 = cleaned['party']
-    db_engine=load_cmp_to_new_GCP_mysql(clean1,clean2)
-    #db_engine= load_to_new_mysql(clean1,clean2)
+    db_engine = load_cmp_to_new_GCP_mysql(clean1, clean2)
+    
     if db_engine:
         setting_new_pkfk(db_engine)
+    
+    print("✅ ETL 任務順利完成")
+    return True
+
+
+
+
+if __name__ == "__main__":
+    run_accident_full_pipeline()
