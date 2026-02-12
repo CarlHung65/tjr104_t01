@@ -13,5 +13,5 @@ def remove_pycache():
 
 if __name__ == "__main__":
     t_clean_schema.main()
-    l_to_SQL.main()
+    l_SQL_to_GCP.main()
     remove_pycache()

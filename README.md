@@ -1,5 +1,6 @@
 ## Environment Variables
 
+
 1. You need to create `.env` file in the project root directory.
 2. Fill in the required values after `=`.
 ```env
