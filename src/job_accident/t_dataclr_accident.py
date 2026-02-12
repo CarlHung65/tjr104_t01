@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from create_accident_table import (COL_MAP,
+from create_table.create_accident_table import (COL_MAP,
                     MAIN_COL as MC,
                     ENVIRONMENT_COL as EC,
                     HUMAN_BEAHAVIOR_COL as HBC,
