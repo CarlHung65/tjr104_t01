@@ -6,7 +6,7 @@ import zipfile  # 負責：處理壓縮檔，讀取裡面的 CSV 內容
 import pandas as pd  # 負責：資料處理，把 CSV 轉成表格，進行切分與清洗
 import re #因為近年資料A1,A2的title分別為"CSV下載檔案"以及"ZIP下載檔案",所以用Regular Expression只抓取"下載檔案"
 from datetime import datetime
-from create_accident_table import (HEADERS,
+from create_table.create_accident_table import (HEADERS,
                     SAVE_OLD_DATA_DIR,
                     SAVE_NEW_DATA_DIR,
                     RECENT_PAGE_A1_URL,
@@ -195,36 +195,6 @@ def read_old_data_to_dataframe(full_path)->list:
     return old_compare_list
     
 
-# ------------------------------------------------------------------
-# log dataframe比較(新舊list),最後產出log
-# -----------------------------------------------------------------
-def compare_and_log(old_df_list, new_df_list):
-    Logs_dir = os.path.join(SAVE_NEW_DATA_DIR,"Logs")
-    Log_file = os.path.join(Logs_dir,"update_log.txt")
-    os.makedirs(Logs_dir, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    with open(Log_file, "a", encoding="utf-8") as log:
-        log.write(f"\n{'='*50}\n")#印分隔線
-        log.write(f"檢查時間: {timestamp}\n")#印當下時間
-        for i in range(len(old_df_list)):
-            if old_df_list is None:
-                log.write("紀錄: 第一次抓取資料。\n")
-                log.write(f"初始資料量: {len(new_df_list[i])} 筆, 欄位數: {len(new_df_list[i].columns)}\n")
-            else:
-                # 檢查筆數差異
-                if len(new_df_list[i])!=len(old_df_list[i]):
-                    diff_count = len(new_df_list[i]) - len(old_df_list[i])
-                    log.write(f"舊資料筆數: {len(old_df_list[i])}\n")
-                    log.write(f"新資料筆數: {len(new_df_list[i])}\n")
-                    log.write(f"新增筆數: {diff_count}\n")
-                
-                # 找出真正「內容不一樣」的資料
-                # 假設 '序號' 或某個組合鍵是唯一的
-                # 這裡用一個簡單的方法：找出 new_df 中不在 old_df 的部分
-                new_records = pd.concat([old_df_list[i], new_df_list[i]]).drop_duplicates(keep=False)
-                
-                if not new_records.empty:
-                    log.write(f"具體差異內容摘要:\n{new_records.head().to_string()}\n")
-                else:
-                    log.write("結果: 資料內容無變化。\n")
+
+
+
