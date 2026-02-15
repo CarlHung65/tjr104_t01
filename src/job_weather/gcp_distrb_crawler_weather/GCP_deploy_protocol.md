@@ -5,16 +5,16 @@
     VM3[11K] ──┤
     VM4[11K] ──┘
         ↓
-    VM5[合併] → VM6[MySQL Container, already exist]
+    VM5[MySQL Container, already exist]
 
     ```
 1. GCP infrastructures (GCS、VM、Artifact registry、Service Account)
 
     1.1 Establish GCS bucket
     ``` 
+        # 可以在GCP console上執行。
         # 格式如下:
         gsutil mb gs://<Bucket_name>/
-
         # 範例如下:
         gsutil mb gs://tjr104-01_weather/
     ```
@@ -29,10 +29,10 @@
         gsutil iam ch serviceAccount:<SA name>@<project_id>.iam.gserviceaccount.com:objectAdmin gs://<bucket_name>/
     ```
 
-    1.3 Create Five VM instances(或是到GCP console上創建5台)
+    1.3 Create Five VM instances(或是到GCP console上創建4台)
     ```
-        # 4台 Airflow VM + 1台合併VM
-        for i in {1..5}; do
+        # 4台 Airflow VM
+        for i in {1..4}; do
             gcloud compute instances create airflow3-vm$i \
                 --machine-type=e2-medium \
                 --zone=asia-east1-b \
@@ -47,7 +47,7 @@
 
     1.4 進入VM
     ```
-        gcloud compute ssh --zone "asia-east1-c" "airflow3-vm4" --project "watchful-net-484213-s5" --tunnel-through-iap
+        gcloud compute ssh --zone "asia-east1-c" "airflow3-vm1" --project "watchful-net-484213-s5" --tunnel-through-iap
     ```
     
 2. Install Docker
@@ -66,7 +66,7 @@
         # 再做一次
             docker run hello-world
     ```
-3. Prepare several .py files where sharding the DAG runs to four VM instances VM1-VM5.
+3. Prepare several .py files where sharding the DAG runs to four VM instances VM1-VM4.
 
 4. Push local Airflow3 image to GCP artifact registry
     ```
@@ -112,10 +112,10 @@
 
 6. Deploy MySQL in VM6 (already done)
 
-7. 在VM1-VM5內部，各開立一份專案資料夾，所以要重複以下動作五次。
+7. 在VM1-VM4內部，各開立一份專案資料夾，所以要重複以下動作4次。
     ```
-        # 流程說明：進入VM1/2/3/4/5 的終端機，逐行執行以下指令
-        gcloud compute ssh指令 進入 VM/1/2/3/4/5
+        # 流程說明：進入VM1/2/3/4 的終端機，逐行執行以下指令
+        gcloud compute ssh指令 進入 VM/1/2/3/4
 
         # 創建資料夾，像跟地端的image一樣同步
         mkdir -p ~/airflow3-app/dags ~/airflow3-app/logs ~/airflow3-app/tasks ~/airflow3-app/utils ~/airflow3-app/data
@@ -123,9 +123,9 @@
         # 進入
         cd ~/airflow3-app
     ```
-8. 在VM1-VM5的專案資料夾中，設立.env檔案各一份，來存放五台VM在運行自己docker containers時會使用到的相同資訊。所以要重複以下動作五次。
+8. 在VM1-VM4的專案資料夾中，設立.env檔案各一份，來存放4台VM在運行自己docker containers時會使用到的相同資訊。所以要重複以下動作4次。
     ```
-        # 流程說明：進入VM1/2/3/4/5 的終端機 -> 用 vim 指令編寫並存下.env檔案
+        # 流程說明：進入VM1/2/3/4 的終端機 -> 用 vim 指令編寫並存下.env檔案
         gcloud compute ssh指令 進入 VM1。
         cd airflow3-app
         輸入 vim .env。
@@ -140,7 +140,7 @@
         sudo apt-get update && sudo apt-get install vim -y
     ```
 
-9. Pull and start Airflow3 docker container in four VM instances (VM1-VM5)
+9. Pull and start Airflow3 docker container in four VM instances (VM1-VM4)
     ```
         # 幫VM上的docker取得可以使用artifact registry的權限，
         # 格式如下：
@@ -183,7 +183,7 @@
 
 11. Firewall settings
     ```
-        # 制定防火牆規則，5台vm只需一起在mac終端機執行一次就好:
+        # 制定防火牆規則，4台vm只需一起在mac終端機執行一次就好:
         gcloud compute firewall-rules create allow-airflow-gui \
         --project=<專案id> \
         --direction=INGRESS \
@@ -226,10 +226,9 @@
         gcloud compute scp --recurse ./dags ./tasks ./utils <個人gcp_username>@<VM名稱>:~/<VM中專案資料夾名稱>/ --project=<專案id> --zone=<zone名稱> --tunnel-through-iap
 
         # 範例如下：
-        gcloud compute scp --recurse ./dags ./tasks ./utils lucky460721@airflow3-vm1:~/airflow3-app/ --project=watchful-net-484213-s5 --zone=asia-east1-c --tunnel-through-iap
+        gcloud compute scp --recurse ./dags ./tasks ./utils lucky460721@airflow3-vm1:~/airflow3-app/ --project=causal-inquiry-484423-e7 --zone=asia-east1-c --tunnel-through-iap
     ```
-
-
+        
 14. 刷新airflow UI介面，確保airflow scheduler有成功地自動掃描 /opt/airflow/dags。
     ```
         # 進入vm
@@ -266,8 +265,9 @@
             # 同步整個 tasks 資料夾
             docker cp ~/airflow3-app/tasks/. airflow-vm1:/opt/airflow/tasks/
             
-            # 強制airflow重新掃描dags
-            /opt/airflow$ airflow dags reserialize
+            # 清除快取
+        ```
+            docker exec -it airflow3-tjr104-local find /opt/airflow/<資料夾名> -name "*.pyc" -delete
         ```
     17.3 去ui刷新網路頁面
 
@@ -319,7 +319,7 @@
     ```
 
 2. 本專案VM上的airflow container 啟動容器 - Docker run範例:
-```
+    ```
     docker run -d \
     --name airflow-vm4 \
     --env-file .env \
@@ -336,4 +336,41 @@
     -e AIRFLOW__CORE__LOAD_EXAMPLES=False \
     asia-east1-docker.pkg.dev/watchful-net-484213-s5/tjr104-01-weather/airflow3-weather-etl-image:latest \
     airflow standalone
-```
+    ```
+
+docker run -d \
+--name airflow-vm1 \
+--env-file .env \
+-p 8080:8080 \
+-v $PWD/dags:/opt/airflow/dags \
+-v $PWD/logs:/opt/airflow/logs \
+-v $PWD/tasks:/opt/airflow/tasks \
+-v $PWD/utils:/opt/airflow/utils \
+-v $PWD/data:/opt/airflow/data \
+-e PYTHONPATH=/opt/airflow \
+-e AIRFLOW__PROXIES__PASSWORD=123456 \
+-e _AIRFLOW_WWW_USER_PASSWORD=123456 \
+-e VM_ID=1 \
+-e AIRFLOW__CORE__LOAD_EXAMPLES=False \
+asia-east1-docker.pkg.dev/watchful-net-484213-s5/tjr104-01-weather/airflow3-weather-etl-image:latest \
+airflow standalone
+
+docker run -d \
+--name airflow3-vm1 \
+--env-file .env \
+-v "$(pwd)/causal-inquiry-484423-e7-d598ada9e5a3.json:/opt/airflow/gcp-key.json:ro" \
+-e GOOGLE_APPLICATION_CREDENTIALS=/opt/airflow/gcp-key.json \
+-p 8080:8080 \
+-v $PWD/dags:/opt/airflow/dags \
+-v $PWD/logs:/opt/airflow/logs \
+-v $PWD/tasks:/opt/airflow/tasks \
+-v $PWD/utils:/opt/airflow/utils \
+-v $PWD/data:/opt/airflow/data \
+-e PYTHONPATH=/opt/airflow \
+-e AIRFLOW__PROXIES__PASSWORD=123456 \
+-e _AIRFLOW_WWW_USER_PASSWORD=123456 \
+-e VM_ID=1 \
+-e AIRFLOW__CORE__LOAD_EXAMPLES=False \
+asia-east1-docker.pkg.dev/causal-inquiry-484423-e7/tjr104-01-weather/airflow3-weather-etl-image:latest \
+airflow standalone
+

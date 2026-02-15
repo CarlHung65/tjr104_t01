@@ -1,53 +1,63 @@
 import requests
-import pandas as pd
-import time
-from datetime import timedelta
-from airflow.sdk import task
+from dotenv import load_dotenv
+import os
 from airflow.models import Variable
 from airflow.exceptions import AirflowException
-from airflow.providers.google.cloud.hooks.gcs import GCSHook
 
 
-def request_weather_api(lat: float | pd.Float64Dtype,
-                        lon: float | pd.Float64Dtype,
+def request_weather_api(lats_str: str, lons_str: str,
                         start_date: str, end_date: str,
-                        var_lst: list) -> dict | None:
-    url = "https://archive-api.open-meteo.com/v1/archive"
-    params = {
-        "latitude": lat,
-        "longitude": lon,
-        "start_date": start_date,
-        "end_date": end_date,
-        "hourly": var_lst,
-        "timezone": "Asia/Taipei"
-    }
+                        var_lst: list) -> dict | list | None:
+
+    # url = "https://archive-api.open-meteo.com/v1/archive"
+    # params = {
+    #     "latitude": lat,
+    #     "longitude": lon,
+    #     "start_date": start_date,
+    #     "end_date": end_date,
+    #     "hourly": var_lst,
+    #     "timezone": "Asia/Taipei"
+    # }
+
+    # 調用API
+    print("Calling for API once getting api key......")
+
+    # 呼叫API KEY
+    load_dotenv()
+    apikey = os.getenv("openmeteoapikey")
+    url = "https://customer-archive-api.open-meteo.com/v1/archive"
+    params = {"latitude": lats_str, "longitude": lons_str,
+              "start_date": start_date, "end_date": end_date,
+              "hourly": var_lst, "timezone": "Asia/Taipei",
+              "apikey": apikey,
+              }
+
     header = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"}
     try:
-        response = requests.get(url, params=params, timeout=30, headers=header)
-        print(f"{lat}, {lon}發送ing。")
-        if response.status_code == 200:
-            print(f"{lat}, {lon}發送成功。{response.status_code}")
-            return response.json()
+        print(f"發送請求中.......")
+        print(f"[緯度:{lats_str}, 經度{lons_str}].....")
 
+        response = requests.get(
+            url, params=params, timeout=60, headers=header)
+
+        if response.status_code == 200:
+            print(f"請求發送成功。")
+            data = response.json()
+            return data
         elif response.status_code == 429:
-            print(f"Rate limit 429 reached at {lat}, {lon}")
-            time.sleep(3600)
-            return None  # raise AirflowException的話會殺掉整個迴圈，浪費重啟task retry額度。return None當作跳過這一輪
-        else:
-            print(f"HTTP {response.status_code} at {lat}, {lon}")
-            return None  # 這區可能是來自API參數問題，也是直接跳過
+            print(f"Rate limit 429 reached at {lats_str}, {lons_str}")
+            raise AirflowException("Rate limit hit 429!")
 
     except requests.exceptions.Timeout:
-        print(f"Timeout at {lat}, {lon}")
-        return None
-    # 其餘偏向連線問題則仰賴airflow retry機制，所以直接raise exception
+        print("response.status_code: ", response.status_code)
+        raise AirflowException("Timeout!")
     except requests.exceptions.ConnectionError:
-        print(f"Connection error at {lat}, {lon}")
-        raise AirflowException(f"Connection error at {lat},{lon}")
+        print("response.status_code: ", response.status_code)
+        raise AirflowException("Connection error!")
     except requests.exceptions.HTTPError as e:
-        print(f"HTTP error at {lat}, {lon}: {e}")
-        raise AirflowException(f"HTTP error at {lat},{lon}: {e}")
+        print("response.status_code: ", response.status_code)
+        raise AirflowException("HTTP error!")
     except Exception as e:
-        print(f"Unexpected error at {lat}, {lon}: {e}")
-        raise AirflowException(f"Unexpected error at {lat},{lon}: {str(e)}")
+        print("response.status_code: ", response.status_code)
+        raise AirflowException("Unexpected error!")

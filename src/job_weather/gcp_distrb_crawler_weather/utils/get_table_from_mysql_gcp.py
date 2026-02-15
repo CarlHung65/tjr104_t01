@@ -1,6 +1,5 @@
 import pandas as pd
 import os
-from pathlib import Path
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 from urllib.parse import quote_plus
@@ -10,7 +9,7 @@ def get_table_from_sqlserver(database: str, dql_str: str) -> pd.DataFrame:
     """Read the desingated table in MySQL server. """
 
     # 準備與GCP VM上的MySQL server的連線
-    load_dotenv(Path().cwd())
+    load_dotenv()
     username = os.getenv("gcp_mysql_vm_user")
     password = os.getenv("gcp_mysql_vm_passwd")
     host = os.getenv("gcp_mysql_vm_host")
