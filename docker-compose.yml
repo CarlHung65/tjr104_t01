@@ -39,6 +39,25 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: always
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD} ping | grep PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+
   # 一次性初始化：建表 + 建 admin
   airflow-init:
     <<: *airflow-common
@@ -76,3 +95,4 @@ services:
 
 volumes:
   mysql_data:
+  redis_data:
