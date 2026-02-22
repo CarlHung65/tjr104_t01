@@ -1,8 +1,14 @@
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from datetime import datetime, timedelta
 import sys
 import os
+# 強制將專案根目錄 (/opt/airflow) 加入搜尋路徑
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from airflow import DAG
+#from airflow.operators.python import PythonOperator
+#修正 Deprecated 警告
+from airflow.providers.standard.operators.python import PythonOperator
+from datetime import datetime, timedelta
+
 
 # 1. 確保 Airflow 找到你的 src 邏輯
 sys.path.append('/app')
