@@ -36,10 +36,11 @@ def request_weather_api(lats_str: str, lons_str: str,
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"}
     try:
         print(f"發送請求中.......")
+        print(f"Start date: {start_date}. End date: {end_date}")
         print(f"[緯度:{lats_str}, 經度{lons_str}].....")
 
         response = requests.get(
-            url, params=params, timeout=60, headers=header)
+            url, params=params, timeout=120, headers=header)
 
         if response.status_code == 200:
             print(f"請求發送成功。")
