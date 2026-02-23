@@ -81,7 +81,7 @@ def run_accident_full_pipeline():
                 clean2 = cleaned['party']
                 db_engine=load_to_GCP_mysql(clean1,clean2)
                 #db_engine= load_to_mysql(clean1,clean2)
-                del old_list, trans, cleaned, clean1, clean2
+                del old, trans, cleaned, clean1, clean2
                 gc.collect()  # 手動啟動垃圾回收
             print("🛠️ 所有年度匯入完成，開始統一建立資料庫關聯 (PK/FK)...")
             setting_pkfk(engine)
