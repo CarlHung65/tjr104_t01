@@ -5,7 +5,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 src_path = os.path.abspath(os.path.join(current_dir, "../../"))
 if src_path not in sys.path:
     sys.path.append(src_path)
-
+import gc
     
 from e_crawler_accident import (auto_scrape_and_download_old_data,
                      auto_scrape_recent_data,
@@ -66,10 +66,14 @@ def run_accident_full_pipeline():
                 clean2 = cleaned['party']
                 db_engine = load_to_GCP_mysql(clean1,clean2)
                 #db_engine=load_to_mysql(clean1,clean2)
-            if db_engine:
-                setting_pkfk(db_engine)
+                del old_list, trans, cleaned, clean1, clean2
+                gc.collect()  # 手動啟動垃圾回收
+            print("🛠️ 所有年度匯入完成，開始統一建立資料庫關聯 (PK/FK)...")
+            setting_pkfk(engine)
+            
         else:
             for i in range(len(SEQ_PAGE_URL)):
+                print(f"正在處理第 {i+1} 個年度資料: {SEQ_PAGE_URL[i]}")
                 old=auto_scrape_and_download_old_data(SEQ_PAGE_URL[i])
                 trans=transform_data_dict(old)
                 cleaned=car_crash_old_data_clean(trans)
@@ -77,8 +81,11 @@ def run_accident_full_pipeline():
                 clean2 = cleaned['party']
                 db_engine=load_to_GCP_mysql(clean1,clean2)
                 #db_engine= load_to_mysql(clean1,clean2)
-            if db_engine:
-                setting_pkfk(db_engine)
+                del old_list, trans, cleaned, clean1, clean2
+                gc.collect()  # 手動啟動垃圾回收
+            print("🛠️ 所有年度匯入完成，開始統一建立資料庫關聯 (PK/FK)...")
+            setting_pkfk(engine)
+            
 
     # 2. 抓取近期資料並上傳
     print("🚀 開始抓取近期資料...")
