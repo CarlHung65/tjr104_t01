@@ -1,4 +1,3 @@
-pre-commit
 retry-requests
 cryptography
 python-dotenv
@@ -10,3 +9,5 @@ pymysql
 pyarrow
 google-cloud-storage
 apache-airflow-providers-google
+pendulum
+graphviz
