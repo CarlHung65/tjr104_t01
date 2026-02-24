@@ -1,18 +1,17 @@
 import sys
 import os
-# 強制將專案根目錄 (/opt/airflow) 加入搜尋路徑
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 from airflow import DAG
-#from airflow.operators.python import PythonOperator
 #修正 Deprecated 警告
 from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta
 
-
+BASE_DIR = '/opt/airflow'
+SRC_DIR = os.path.join(BASE_DIR, 'src/job_accident')
 # 1. 確保 Airflow 找到你的 src 邏輯
-sys.path.insert(0, '/opt/airflow') # 確保能找到 src.job_accident
-
+sys.path.insert(0, BASE_DIR) # 確保能找到 src.job_accident
+#確保 main_pipeline 內部能找到隔壁的 e_crawler_accident 等檔案
+# 把 src/job_accident 這個目錄直接塞進路徑
+sys.path.insert(0, SRC_DIR)
 # 2. 引入你剛才整合好的主程式進入點
 # 假設你的主程式檔名是 main_etl.py
 from src.job_accident.main_pipeline import run_accident_full_pipeline
