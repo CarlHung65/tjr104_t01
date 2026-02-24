@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 
 
 # 1. 確保 Airflow 找到你的 src 邏輯
-sys.path.append('/app')
+sys.path.insert(0, '/opt/airflow') # 確保能找到 src.job_accident
 
 # 2. 引入你剛才整合好的主程式進入點
 # 假設你的主程式檔名是 main_etl.py
@@ -21,7 +21,7 @@ from src.job_accident.main_pipeline import run_accident_full_pipeline
 default_args = {
     'owner': 'andrew',
     'depends_on_past': False,
-    'start_date': datetime(2026, 2, 12),
+    'start_date': datetime(2026, 2, 23),
     'retries': 1,
     'retry_delay': timedelta(minutes=5),
     'email_on_failure': False, # 暫時不發信
