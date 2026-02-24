@@ -1,20 +1,22 @@
 import sys
 import os
+
+
+# --- 強制路徑設定區 (必須放在所有 src import 之前) ---
+# 獲取專案根目錄的絕對路徑 /opt/airflow
+BASE_DIR = os.path.abspath("/opt/airflow")
+JOB_DIR = os.path.join(BASE_DIR, "src/job_accident")
+# 確保這些路徑出現在搜尋清單的最前面
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+if JOB_DIR not in sys.path:
+    sys.path.insert(0, JOB_DIR)
+
 from airflow import DAG
 #修正 Deprecated 警告
 from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta
-
-BASE_DIR = '/opt/airflow'
-SRC_DIR = os.path.join(BASE_DIR, 'src/job_accident')
-# 1. 確保 Airflow 找到你的 src 邏輯
-sys.path.insert(0, BASE_DIR) # 確保能找到 src.job_accident
-#確保 main_pipeline 內部能找到隔壁的 e_crawler_accident 等檔案
-# 把 src/job_accident 這個目錄直接塞進路徑
-sys.path.insert(0, SRC_DIR)
-# 2. 引入你剛才整合好的主程式進入點
-# 假設你的主程式檔名是 main_etl.py
-from src.job_accident.main_pipeline import run_accident_full_pipeline
+from main_pipeline import run_accident_full_pipeline
 
 # 3. 指揮官設定 (剛才討論的 retry 邏輯)
 default_args = {
