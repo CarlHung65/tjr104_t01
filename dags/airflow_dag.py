@@ -1,10 +1,8 @@
 import sys
 import os
 
-# --- 核心路徑修正 ---
-# 既然 src 已經被掛載到 dags 裡面，我們直接把這兩個路徑塞到最前面
-sys.path.insert(0, '/opt/airflow/dags/src')
-sys.path.insert(0, '/opt/airflow/dags/src/job_accident')
+
+sys.path.insert(0, '/opt/airflow')
 
 from airflow import DAG
 from airflow.providers.standard.operators.python import PythonOperator
@@ -12,7 +10,7 @@ from datetime import datetime, timedelta
 
 # --- 匯入邏輯 (重要：不要寫 from src.job_accident...) ---
 # 既然已經把路徑塞進 sys.path，直接匯入檔名即可避免層級衝突
-from main_pipeline import run_accident_full_pipeline
+from src.job_accident.main_pipeline import run_accident_full_pipeline
 
 default_args = {
     'owner': 'andrew',
