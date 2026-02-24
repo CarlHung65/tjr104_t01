@@ -30,7 +30,7 @@ default_args = {
 with DAG(
     dag_id='accident_gcp_pipeline',
     default_args=default_args,
-    schedule_interval='@daily',
+    schedule='@daily',
     catchup=False,
 ) as dag:
 
