@@ -1,5 +1,12 @@
 import sys
 import os
+
+
+
+sys.path.insert(0, '/opt/airflow/dags/src')
+sys.path.insert(0, '/opt/airflow/dags/src/job_accident')
+
+
 from airflow import DAG
 #修正 Deprecated 警告
 from airflow.providers.standard.operators.python import PythonOperator
