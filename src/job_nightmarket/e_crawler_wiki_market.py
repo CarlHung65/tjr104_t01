@@ -61,7 +61,7 @@ for region, cities in regions.items():
         random_delay(0.5, 1.5)
 
 # -------- 新增：自動建立資料夾並輸出 CSV --------
-output_dir = r".\Data_raw"
+output_dir = r".\src\job_nightmarket\Data_raw"
 output_path = os.path.join(output_dir, "night_markets.csv")
 
 os.makedirs(output_dir, exist_ok=True)

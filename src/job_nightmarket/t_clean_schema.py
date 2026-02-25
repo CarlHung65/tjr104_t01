@@ -236,7 +236,7 @@ def normalize_nightmarket_list(api_data: list, zipcode_to_area: dict) -> pd.Data
 
 
 def export_csv(df: pd.DataFrame, filename="nightmarket_clean.csv"):
-    output_dir = r".\Data_clean"
+    output_dir = r".\src\job_nightmarket\Data_clean"
     os.makedirs(output_dir, exist_ok=True)
     csv_path = os.path.join(output_dir, filename)
     df.to_csv(csv_path, index=False, encoding="utf-8-sig")
