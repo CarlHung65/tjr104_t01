@@ -2,7 +2,7 @@ from sqlalchemy import text
 from sqlalchemy import types #types用在python裡定義mysql的資料型別
 import pymysql  # 代碼中沒直接用到它的 method，但它是底層驅動
 import pandas as pd  # 負責：資料處理，把 CSV 轉成表格，進行切分與清洗
-from create_table.create_accident_table import (DB_URL,
+from src.create_table.create_accident_table import (DB_URL,
                     GCP_DB_URL,
                     MAIN_TABLE_DICT as MTD,
                     ENVIRONMENT_TABLE_DICT as ETD,
