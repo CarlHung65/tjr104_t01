@@ -9,8 +9,8 @@ load_dotenv()
 API_KEY = os.getenv("Place_api")
 
 # 檔案路徑
-CSV_FILE = r".\Data_raw\night_markets.csv"
-RAW_DIR = r".\Data_raw"
+CSV_FILE = r".\src\job_nightmarket\Data_raw\night_markets.csv"
+RAW_DIR = r".\src\job_nightmarket\Data_raw"
 RAW_FILE = os.path.join(RAW_DIR, "market_api.json")
 
 def search_place_id(place_name):
