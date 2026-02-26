@@ -5,6 +5,7 @@ import pandas as pd  # 負責：資料處理，把 CSV 轉成表格，進行切�
 from src.create_table.create_accident_table import (DB_URL,
                     GCP_DB_URL,
                     MAIN_TABLE_DICT as MTD,
+                    SUB_TABLE_DICT as STD,
                     ENVIRONMENT_TABLE_DICT as ETD,
                     HUMAN_BEAHAVIOR_DICT as HBD,
                     EVENT_PROCESS_PARTICIPATE_OBJECT_DICT1 as EPPOD1,
