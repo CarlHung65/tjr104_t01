@@ -6,7 +6,6 @@ import pandas as pd  # 負責：資料處理，把 CSV 轉成表格，進行切�
 from src.create_table.create_accident_table import (DB_URL,
                     GCP_DB_URL,
                     MAIN_TABLE_DICT as MTD,
-                    SUB_TABLE_DICT as STD,
                     ENVIRONMENT_TABLE_DICT as ETD,
                     HUMAN_BEAHAVIOR_DICT as HBD,
                     EVENT_PROCESS_PARTICIPATE_OBJECT_DICT1 as EPPOD1,
@@ -27,7 +26,6 @@ def load_to_mysql(main_dict, party_dict):
         main_dict['result'].to_sql('accident_sq1_res', con=engine, if_exists='append', index=False,dtype= ERD)
         # 寫入細節表
         party_dict['master'].to_sql('accident_sq2_sub', con=engine, if_exists='append', index=False,dtype= MTD)
-        party_dict['env'].to_sql('accident_sq2_env', con=engine, if_exists='append', index=False,dtype= ETD)
         party_dict['human'].to_sql('accident_sq2_human', con=engine, if_exists='append', index=False,dtype= HBD)
         party_dict['process'].to_sql('accident_sq2_process', con=engine, if_exists='append', index=False,dtype= EPPOD2)
         party_dict['result'].to_sql('accident_sq2_res', con=engine, if_exists='append', index=False,dtype= ERD)
@@ -52,7 +50,6 @@ def load_to_new_mysql(main_dict, party_dict):
         main_dict['result'].to_sql('accident_new_sq1_res', con=engine, if_exists='append', index=False,dtype= ERD)
         # 寫入細節表
         party_dict['master'].to_sql('accident_new_sq2_sub', con=engine, if_exists='append', index=False,dtype= MTD)
-        party_dict['env'].to_sql('accident_new_sq2_env', con=engine, if_exists='append', index=False,dtype= ETD)
         party_dict['human'].to_sql('accident_new_sq2_human', con=engine, if_exists='append', index=False,dtype= HBD)
         party_dict['process'].to_sql('accident_new_sq2_process', con=engine, if_exists='append', index=False,dtype= EPPOD2)
         party_dict['result'].to_sql('accident_new_sq2_res', con=engine, if_exists='append', index=False,dtype= ERD)
@@ -79,7 +76,6 @@ def load_cmp_new_mysql(main_dict, party_dict):
         (main_dict['process'], 'accident_new_sq1_process', 'tmp_process'),
         (main_dict['result'], 'accident_new_sq1_res', 'tmp_result'),
         (party_dict['master'], 'accident_new_sq2_sub', 'tmp_sub_main'),
-        (party_dict['env'], 'accident_new_sq2_env', 'tmp_sub_env'),
         (party_dict['human'], 'accident_new_sq2_human', 'tmp_sub_human'),
         (party_dict['process'], 'accident_new_sq2_process', 'tmp_sub_process'),
         (party_dict['result'], 'accident_new_sq2_res', 'tmp_sub_result')
