@@ -3,12 +3,14 @@ from sqlalchemy import text,inspect,VARCHAR
 from sqlalchemy import types #types用在python裡定義mysql的資料型別
 import pymysql  # 代碼中沒直接用到它的 method，但它是底層驅動
 import pandas as pd  # 負責：資料處理，把 CSV 轉成表格，進行切分與清洗
-from create_table.create_accident_table import (
+from src.create_table.create_accident_table import (
                     GCP_DB_URL,
                     MAIN_TABLE_DICT as MTD,
+                    SUB_TABLE_DICT as STD,
                     ENVIRONMENT_TABLE_DICT as ETD,
                     HUMAN_BEAHAVIOR_DICT as HBD,
-                    EVENT_PROCESS_PARTICIPATE_OBJECT_DICT as EPPOD,
+                    EVENT_PROCESS_PARTICIPATE_OBJECT_DICT1 as EPPOD1,
+                    EVENT_PROCESS_PARTICIPATE_OBJECT_DICT2 as EPPOD2,
                     EVENT_RESULT_DICT as ERD)
 
 #----------------------------------------------------------------
@@ -27,15 +29,14 @@ def load_to_GCP_mysql(main_dict, party_dict):
             main_dict['master'].to_sql('accident_sq1_main', con=connection, if_exists='append', index=False,dtype= MTD,chunksize=200)
             main_dict['env'].to_sql('accident_sq1_env', con=connection, if_exists='append', index=False,dtype= ETD,chunksize=200)
             main_dict['human'].to_sql('accident_sq1_human', con=connection, if_exists='append', index=False,dtype= HBD,chunksize=200)
-            main_dict['process'].to_sql('accident_sq1_process', con=connection, if_exists='append', index=False,dtype= EPPOD,chunksize=200)
+            main_dict['process'].to_sql('accident_sq1_process', con=connection, if_exists='append', index=False,dtype= EPPOD1,chunksize=200)
             main_dict['result'].to_sql('accident_sq1_res', con=connection, if_exists='append', index=False,dtype= ERD,chunksize=200)
 
                 # 寫入細節表
 
-            party_dict['master'].to_sql('accident_sq2_sub', con=connection, if_exists='append', index=False,dtype= MTD,chunksize=200)
-            party_dict['env'].to_sql('accident_sq2_env', con=connection, if_exists='append', index=False,dtype= ETD,chunksize=200)
+            party_dict['master'].to_sql('accident_sq2_sub', con=connection, if_exists='append', index=False,dtype= STD,chunksize=200)
             party_dict['human'].to_sql('accident_sq2_human', con=connection, if_exists='append', index=False,dtype= HBD,chunksize=200)
-            party_dict['process'].to_sql('accident_sq2_process', con=connection, if_exists='append', index=False,dtype= EPPOD,chunksize=200)
+            party_dict['process'].to_sql('accident_sq2_process', con=connection, if_exists='append', index=False,dtype= EPPOD2,chunksize=200)
             party_dict['result'].to_sql('accident_sq2_res', con=connection, if_exists='append', index=False,dtype= ERD,chunksize=200)
             #要加chunksize=200,不然上傳雲端會卡住(一次上傳500列資料)
         print("所有資料已成功寫入資料庫！")
@@ -61,15 +62,14 @@ def load_to_new_GCP_mysql(main_dict, party_dict):
             main_dict['master'].to_sql('accident_new_sq1_main', con=connection, if_exists='append', index=False,dtype= MTD,chunksize=200)
             main_dict['env'].to_sql('accident_new_sq1_env', con=connection, if_exists='append', index=False,dtype= ETD,chunksize=200)
             main_dict['human'].to_sql('accident_new_sq1_human', con=connection, if_exists='append', index=False,dtype= HBD,chunksize=200)
-            main_dict['process'].to_sql('accident_new_sq1_process', con=connection, if_exists='append', index=False,dtype= EPPOD,chunksize=200)
+            main_dict['process'].to_sql('accident_new_sq1_process', con=connection, if_exists='append', index=False,dtype= EPPOD1,chunksize=200)
             main_dict['result'].to_sql('accident_new_sq1_res', con=connection, if_exists='append', index=False,dtype= ERD,chunksize=200)
 
                 # 寫入細節表
 
-            party_dict['master'].to_sql('accident_new_sq2_sub', con=connection, if_exists='append', index=False,dtype= MTD,chunksize=200)
-            party_dict['env'].to_sql('accident_new_sq2_env', con=connection, if_exists='append', index=False,dtype= ETD,chunksize=200)
+            party_dict['master'].to_sql('accident_new_sq2_sub', con=connection, if_exists='append', index=False,dtype= STD,chunksize=200)
             party_dict['human'].to_sql('accident_new_sq2_human', con=connection, if_exists='append', index=False,dtype= HBD,chunksize=200)
-            party_dict['process'].to_sql('accident_new_sq2_process', con=connection, if_exists='append', index=False,dtype= EPPOD,chunksize=200)
+            party_dict['process'].to_sql('accident_new_sq2_process', con=connection, if_exists='append', index=False,dtype= EPPOD2,chunksize=200)
             party_dict['result'].to_sql('accident_new_sq2_res', con=connection, if_exists='append', index=False,dtype= ERD,chunksize=200)
             #要加chunksize=200,不然上傳雲端會卡住(一次上傳500列資料)
         print("所有資料已成功寫入資料庫！")
@@ -100,7 +100,6 @@ def load_cmp_to_new_GCP_mysql(main_dict, party_dict):
         (main_dict['process'], 'accident_new_sq1_process', 'tmp_process'),
         (main_dict['result'], 'accident_new_sq1_res', 'tmp_result'),
         (party_dict['master'], 'accident_new_sq2_sub', 'tmp_sub_main'),
-        (party_dict['env'], 'accident_new_sq2_env', 'tmp_sub_env'),
         (party_dict['human'], 'accident_new_sq2_human', 'tmp_sub_human'),
         (party_dict['process'], 'accident_new_sq2_process', 'tmp_sub_process'),
         (party_dict['result'], 'accident_new_sq2_res', 'tmp_sub_result')

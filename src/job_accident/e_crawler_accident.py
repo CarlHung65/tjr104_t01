@@ -6,7 +6,7 @@ import zipfile  # 負責：處理壓縮檔，讀取裡面的 CSV 內容
 import pandas as pd  # 負責：資料處理，把 CSV 轉成表格，進行切分與清洗
 import re #因為近年資料A1,A2的title分別為"CSV下載檔案"以及"ZIP下載檔案",所以用Regular Expression只抓取"下載檔案"
 from datetime import datetime
-from create_table.create_accident_table import (HEADERS,
+from src.create_table.create_accident_table import (HEADERS,
                     SAVE_OLD_DATA_DIR,
                     SAVE_NEW_DATA_DIR,
                     RECENT_PAGE_A1_URL,

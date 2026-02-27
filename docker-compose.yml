@@ -5,7 +5,7 @@ x-airflow-common: &airflow-common
   environment:
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__CORE__LOAD_EXAMPLES: "False"
-    PYTHONPATH: "/opt/airflow"
+    PYTHONPATH: "/opt/airflow/"
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqldb://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql8:3306/${MYSQL_DATABASE}
   volumes:
     - ./dags:/opt/airflow/dags
