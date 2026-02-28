@@ -208,6 +208,44 @@ def get_pedestrian_stats_by_region_monthly():
     except Exception as e:
         return pd.DataFrame()
 
+def get_pedestrian_trend(lat=None, lon=None, radius_km=0.5):
+    if lat is None or lon is None:
+        cache_key = "analysis:pedestrian_trend_global_v2"
+        where_clause = ""
+        params = {}
+    else:
+        cache_key = f"analysis:pedestrian_trend_local_v2:{round(lat,4)}_{round(lon,4)}"
+        offset = float(radius_km) / 111.0
+        where_clause = """
+            WHERE latitude BETWEEN :min_lat AND :max_lat
+              AND longitude BETWEEN :min_lon AND :max_lon
+        """
+        params = {
+            "min_lat": lat - offset, "max_lat": lat + offset, 
+            "min_lon": lon - offset, "max_lon": lon + offset
+        }
+
+    cached = get_cache(cache_key)
+    if cached: return pd.DataFrame(cached)
+
+    engine = get_db_engine()
+    sql = text(f"""
+    SELECT 
+        DATE_FORMAT(accident_datetime, '%Y-%m') as YearMonth,
+        COUNT(DISTINCT accident_id) as Count
+    FROM `test_accident`.`view_pedestrian_accident`
+    {where_clause}
+    GROUP BY YearMonth
+    ORDER BY YearMonth
+    """)
+    try:
+        with engine.connect() as conn:
+            df = pd.read_sql(sql, conn, params=params)
+        set_cache(cache_key, df.to_dict('records'), ttl=86400)
+        return df
+    except Exception as e:
+        return pd.DataFrame()
+
 
 # 天候風險分析 (包含死傷嚴重度)
 def get_accident_weather_analysis(lat, lon, radius_km=0.5):
