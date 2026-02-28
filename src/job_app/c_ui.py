@@ -1,6 +1,7 @@
 import streamlit as st
 import folium
 from folium.plugins import HeatMap, MarkerCluster
+import pandas as pd
 
 # ==========================================
 # 側邊欄
@@ -137,20 +138,58 @@ def build_map(is_overview, target_market, layers, weather_data, traffic_global, 
         fg_m.add_to(m)
 
     if not is_overview and layers.get('accidents') and df_local is not None and not df_local.empty:
-        fg_acc = folium.FeatureGroup(name="事故")
-        cluster = MarkerCluster(maxClusterRadius=30, disableClusteringAtZoom=16).add_to(fg_acc)
-        for r in df_local.itertuples():
-            d_count = getattr(r, 'death_count', 0)
-            i_count = getattr(r, 'injury_count', 0)
-            c = 'red' if d_count > 0 else ('blue' if i_count > 0 else 'black')
-            cause = getattr(r, 'primary_cause', '未知')
-            date_time = getattr(r, 'accident_datetime', '')
-            popup = f"{date_time}<br>{cause}<br>死:{d_count} 傷:{i_count}"
-            folium.CircleMarker(
-                [r.latitude, r.longitude], 
-                radius=5, color=c, fill=True, fill_opacity=0.7, 
-                popup=folium.Popup(popup, max_width=200)
-            ).add_to(cluster)
-        fg_acc.add_to(m)
+        df_death = df_local[df_local['death_count'] > 0]
+        df_other = df_local[df_local['death_count'] == 0]
 
-    return m
+        # 將一般事故放入專屬圖層
+        fg_other = folium.FeatureGroup(name="一般事故")
+        if len(df_other) > 800:
+            heat_data = [[r.latitude, r.longitude] for r in df_other.itertuples()]
+            folium.plugins.HeatMap(heat_data, radius=12, blur=15, min_opacity=0.3).add_to(fg_other)
+        else:
+            cluster_other = MarkerCluster(maxClusterRadius=30, disableClusteringAtZoom=16).add_to(fg_other)
+            for r in df_other.itertuples():
+                i_count = getattr(r, 'injury_count', 0)
+                color = 'blue' if i_count > 0 else 'black'
+                cause = getattr(r, 'primary_cause', '未知')
+                
+                dt = getattr(r, 'accident_datetime', None)
+                dt_str = dt.strftime('%Y-%m-%d %H:%M:%S') if pd.notnull(dt) else '未知時間'
+                
+                popup_text = f"一般事故<br>{dt_str}<br>{cause}<br>傷:{i_count}"
+                folium.CircleMarker(
+                    [r.latitude, r.longitude], 
+                    radius=5, color=color, fill=True, fill_opacity=0.7, 
+                    popup=folium.Popup(popup_text, max_width=200)
+                ).add_to(cluster_other)
+        fg_other.add_to(m)
+
+        # 將死亡事故放入另一個專屬圖層
+        if not df_death.empty:
+            fg_death = folium.FeatureGroup(name="死亡事故", show=True)
+            for r in df_death.itertuples():
+                d_count = getattr(r, 'death_count', 0)
+                i_count = getattr(r, 'injury_count', 0)
+                
+                dt = getattr(r, 'accident_datetime', None)
+                dt_str = dt.strftime('%Y-%m-%d %H:%M:%S') if pd.notnull(dt) else '未知時間'
+                cause = getattr(r, 'primary_cause', '未知')
+                
+                popup_text = f"🚨 死亡事故<br>{dt_str}<br>{cause}<br>死:{d_count} 傷:{i_count}"
+                
+                # 使用 HTML DivIcon 取代 CircleMarker，強制提升 Z-index 到最頂層
+                icon_html = '<div style="background-color: #ff0000; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 6px rgba(0,0,0,0.8);"></div>'
+                
+                folium.Marker(
+                    [r.latitude, r.longitude], 
+                    icon=folium.DivIcon(html=icon_html, icon_anchor=(8, 8)),
+                    popup=folium.Popup(popup_text, max_width=200),
+                    z_index_offset=1000 # 強制永遠顯示在其他點位之上
+                ).add_to(fg_death)
+                
+            fg_death.add_to(m)
+            
+        # 加入圖層控制面板 (地圖右上角)
+        folium.LayerControl(collapsed=False).add_to(m)
+
+    return m # 將畫好的地圖交還給主程式
