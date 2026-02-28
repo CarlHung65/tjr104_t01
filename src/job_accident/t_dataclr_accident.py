@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 from src.create_table.create_accident_table import (COL_MAP,
                     MAIN_COL as MC,
-                    SUB_COL as SC,
                     ENVIRONMENT_COL as EC,
                     HUMAN_BEAHAVIOR_COL as HBC,
                     EVENT_PROCESS_PARTICIPATE_OBJECT_COL1 as EPPOC1,
@@ -129,7 +128,6 @@ def car_crash_old_data_clean(df_year_list):
         "result": final_main_df[ERC]
     },
     "party": {
-        "master": final_all_party_df[SC],
         "human": final_all_party_df[HBC],
         "process": final_all_party_df[EPPOC2],
         "result": final_all_party_df[ERC]
