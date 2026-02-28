@@ -1,1 +1,0 @@
-Deploy the VM and airflow container on GCP by following the GCP_deploy_protocol.md
