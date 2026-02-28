@@ -59,7 +59,9 @@ COL_MAP = {
 
 MAIN_COL = ['accident_id','accident_category', 'accident_datetime', 'accident_weekday',
            'death_count','injury_count','weather_condition','party_sequence','longitude','latitude']
-    
+SUB_COL = ['accident_id','longitude','latitude']
+
+
 ENVIRONMENT_COL =['accident_id','light_condition','road_type_primary_party','speed_limit_primary_party','road_form_major',
                   'road_form_minor','accident_position_major','accident_position_minor',
                   'road_surface_pavement','road_surface_condition','road_surface_defect',
@@ -70,9 +72,11 @@ ENVIRONMENT_COL =['accident_id','light_condition','road_type_primary_party','spe
 HUMAN_BEAHAVIOR_COL =['accident_id','gender',"age","protective_equipment","mobile_device_usage"
                        ,"party_action_major","party_action_minor"]
 
-EVENT_PROCESS_PARTICIPATE_OBJECT_COL = ['accident_id','accident_type_major','accident_type_minor',
-                                    'cause_analysis_major_primary','cause_analysis_minor_primary',
+EVENT_PROCESS_PARTICIPATE_OBJECT_COL2 = ['accident_id','accident_type_major','accident_type_minor',
                                     'cause_analysis_major_individual','cause_analysis_minor_individual',
+                                    'vehicle_type_major','vehicle_type_minor']
+EVENT_PROCESS_PARTICIPATE_OBJECT_COL1 = ['accident_id','accident_type_major','accident_type_minor',
+                                    'cause_analysis_major_primary','cause_analysis_minor_primary',
                                     'vehicle_type_major','vehicle_type_minor']
 EVENT_RESULT_COL = ['accident_id','accident_category','impact_point_major_initial','impact_point_minor_initial',
                 'impact_point_major_other','impact_point_minor_other','hit_and_run']
@@ -87,6 +91,11 @@ MAIN_TABLE_DICT = {
         'injury_count':types.INTEGER,
         'weather_condition':types.VARCHAR(10),
         'party_sequence':types.INTEGER,
+        'longitude':types.DECIMAL(10,6),
+        'latitude':types.DECIMAL(10,6)
+}
+SUB_TABLE_DICT = {
+        'accident_id': types.VARCHAR(16),
         'longitude':types.DECIMAL(10,6),
         'latitude':types.DECIMAL(10,6)
 }
@@ -108,9 +117,13 @@ HUMAN_BEAHAVIOR_DICT = {'accident_id': types.VARCHAR(16),'gender':types.VARCHAR(
                        'mobile_device_usage':types.VARCHAR(20),'party_action_major':types.VARCHAR(20),
                        'party_action_minor':types.VARCHAR(20)}
 
-EVENT_PROCESS_PARTICIPATE_OBJECT_DICT= {'accident_id': types.VARCHAR(16),'accident_type_major':types.VARCHAR(20),
+EVENT_PROCESS_PARTICIPATE_OBJECT_DICT1= {'accident_id': types.VARCHAR(16),'accident_type_major':types.VARCHAR(20),
                                         'accident_type_minor':types.VARCHAR(20),'cause_analysis_major_primary':types.VARCHAR(20),
                                         'cause_analysis_minor_primary':types.VARCHAR(120),'cause_analysis_major_individual':types.VARCHAR(20),
+                                        'vehicle_type_minor':types.VARCHAR(20)}
+
+EVENT_PROCESS_PARTICIPATE_OBJECT_DICT2= {'accident_id': types.VARCHAR(16),'accident_type_major':types.VARCHAR(20),
+                                        'accident_type_minor':types.VARCHAR(20),'cause_analysis_major_primary':types.VARCHAR(20),
                                         'cause_analysis_minor_individual':types.VARCHAR(100),'vehicle_type_major':types.VARCHAR(20),
                                         'vehicle_type_minor':types.VARCHAR(20)}
 

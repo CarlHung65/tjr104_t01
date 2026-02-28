@@ -1,36 +1,32 @@
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from datetime import datetime, timedelta
 import sys
 import os
 
-# 1. 確保 Airflow 找到你的 src 邏輯
-sys.path.append('/app')
 
-# 2. 引入你剛才整合好的主程式進入點
-# 假設你的主程式檔名是 main_etl.py
+sys.path.insert(0, '/opt/airflow')
+
+from airflow import DAG
+from airflow.providers.standard.operators.python import PythonOperator
+from datetime import datetime, timedelta
+
+# --- 匯入邏輯 (重要：不要寫 from src.job_accident...) ---
+# 既然已經把路徑塞進 sys.path，直接匯入檔名即可避免層級衝突
 from src.job_accident.main_pipeline import run_accident_full_pipeline
 
-# 3. 指揮官設定 (剛才討論的 retry 邏輯)
 default_args = {
     'owner': 'andrew',
     'depends_on_past': False,
-    'start_date': datetime(2026, 2, 12),
+    'start_date': datetime(2026, 2, 23),
     'retries': 1,
     'retry_delay': timedelta(minutes=5),
-    'email_on_failure': False, # 暫時不發信
 }
 
-# 4. 任務排程
 with DAG(
     dag_id='accident_gcp_pipeline',
     default_args=default_args,
-    schedule_interval='@daily',
+    schedule='@daily',
     catchup=False,
 ) as dag:
 
-    # 這個任務會去執行你寫在 main_etl.py 裡的 pipeline
-    # 包含：讀取 .env -> 爬蟲 -> 清洗 -> 檢查資料表 -> 上傳 GCP
     task_execute_etl = PythonOperator(
         task_id='run_full_process',
         python_callable=run_accident_full_pipeline
