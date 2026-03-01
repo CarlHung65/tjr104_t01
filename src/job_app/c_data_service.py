@@ -82,7 +82,7 @@ def get_taiwan_heatmap_data():
     cached = get_cache(cache_key)
     if cached: return cached
     engine = get_db_engine()
-    sql = "SELECT lat, lon, count FROM `test_accident`.`view_accident_heatmap` WHERE count >= 3"
+    sql = "SELECT lat, lon, count FROM `test_accident`.`tbl_accident_heatmap` WHERE count >= 3"
     try:
         with engine.connect() as conn:
             df = pd.read_sql(sql, conn)
@@ -105,21 +105,28 @@ def get_nearby_accidents(lat, lon, radius_km=0.5, sample=True):
     engine = get_db_engine()
     offset = float(radius_km) / 111.0
     sql = text("""
-        SELECT 
-            m.accident_datetime,
-            m.latitude, 
-            m.longitude, 
-            m.death_count, 
-            m.injury_count, 
-            m.weather_condition,
-            MAX(COALESCE(p.cause_analysis_minor_primary, p.cause_analysis_major_primary, '未知')) AS primary_cause
-        FROM `test_accident`.`accident_sq1_main` m
-        LEFT JOIN `test_accident`.`accident_sq1_process` p 
-            ON m.accident_id = p.accident_id
-        WHERE m.latitude BETWEEN :min_lat AND :max_lat
-          AND m.longitude BETWEEN :min_lon AND :max_lon
-        GROUP BY m.accident_id
-    """)
+    SELECT 
+        a.accident_datetime,
+        a.latitude, 
+        a.longitude, 
+        a.death_count, 
+        a.injury_count, 
+        m.weather_condition,
+        a.primary_cause,
+        a.Year,
+        a.Hour,
+        a.Weekday_CN,
+        CASE 
+            WHEN a.Hour >= 6 AND a.Hour < 12 THEN '早'
+            WHEN a.Hour >= 12 AND a.Hour < 18 THEN '午'
+            ELSE '晚'
+        END AS Period
+    FROM `test_accident`.`tbl_accident_analysis` a
+    LEFT JOIN `test_accident`.`accident_sq1_main` m 
+        ON a.accident_id = m.accident_id
+    WHERE a.latitude BETWEEN :min_lat AND :max_lat
+      AND a.longitude BETWEEN :min_lon AND :max_lon
+""")
     params = {"min_lat": lat-offset, "max_lat": lat+offset, "min_lon": lon-offset, "max_lon": lon+offset}
 
     df = pd.DataFrame()
@@ -132,20 +139,6 @@ def get_nearby_accidents(lat, lon, radius_km=0.5, sample=True):
     
     if df.empty: 
         return pd.DataFrame(), {"total":0}, {}, pd.DataFrame()
-
-    df['accident_datetime'] = pd.to_datetime(df['accident_datetime'], errors='coerce')
-    df['Year'] = df['accident_datetime'].dt.year
-    df['Hour'] = df['accident_datetime'].dt.hour
-    df['Weekday'] = df['accident_datetime'].dt.day_name()
-    
-    def get_period(h):
-        if 6 <= h < 12: return '早'
-        elif 12 <= h < 18: return '午'
-        else: return '晚'
-    df['Period'] = df['Hour'].apply(get_period)
-    
-    wd_map = {'Monday':'週一', 'Tuesday':'週二', 'Wednesday':'週三', 'Thursday':'週四', 'Friday':'週五', 'Saturday':'週六', 'Sunday':'週日'}
-    df['Weekday_CN'] = df['Weekday'].map(wd_map)
 
     stats = {
         "total": len(df),
@@ -173,7 +166,8 @@ def get_nearby_accidents(lat, lon, radius_km=0.5, sample=True):
     yearly_stats = pd.concat([yearly_grp, period_grp], axis=1).sort_index(ascending=False).reset_index()
 
     if sample:
-        map_df = df.sample(n=500, random_state=42) if len(df) > 500 else df
+        # 將上限調高到 1000 點，確保畫面豐富度，同時保護前端效能
+        map_df = df.sample(n=1000, random_state=42) if len(df) > 1000 else df
     else:
         map_df = df
     result = (map_df, stats, charts, yearly_stats)
@@ -196,7 +190,7 @@ def get_pedestrian_stats_by_region_monthly():
             ELSE '南部'
         END as Region,
         COUNT(DISTINCT accident_id) as Count
-    FROM `test_accident`.`view_pedestrian_accident`
+    FROM `test_accident`.`tbl_pedestrian_accident`
     GROUP BY YearMonth, Region
     ORDER BY YearMonth, Region
     """
@@ -233,7 +227,7 @@ def get_pedestrian_trend(lat=None, lon=None, radius_km=0.5):
     SELECT 
         DATE_FORMAT(accident_datetime, '%Y-%m') as YearMonth,
         COUNT(DISTINCT accident_id) as Count
-    FROM `test_accident`.`view_pedestrian_accident`
+    FROM `test_accident`.`tbl_pedestrian_accident`
     {where_clause}
     GROUP BY YearMonth
     ORDER BY YearMonth
@@ -261,14 +255,16 @@ def get_accident_weather_analysis(lat, lon, radius_km=0.5):
     
     sql = text("""
         SELECT 
-            weather_condition as 天氣, 
+            m.weather_condition as 天氣, 
             COUNT(*) as 件數,
-            SUM(death_count) as 死亡,
-            SUM(injury_count) as 受傷
-        FROM `test_accident`.`accident_sq1_main`
-        WHERE latitude BETWEEN :min_lat AND :max_lat 
-          AND longitude BETWEEN :min_lon AND :max_lon
-        GROUP BY weather_condition
+            SUM(a.death_count) as 死亡,
+            SUM(a.injury_count) as 受傷
+        FROM `test_accident`.`tbl_accident_analysis` a
+        LEFT JOIN `test_accident`.`accident_sq1_main` m 
+            ON a.accident_id = m.accident_id
+        WHERE a.latitude BETWEEN :min_lat AND :max_lat 
+          AND a.longitude BETWEEN :min_lon AND :max_lon
+        GROUP BY m.weather_condition
         ORDER BY 件數 DESC
     """)
     params = {"min_lat": lat-offset, "max_lat": lat+offset, "min_lon": lon-offset, "max_lon": lon+offset}
