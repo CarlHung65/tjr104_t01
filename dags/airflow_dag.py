@@ -1,10 +1,11 @@
 import os
+import sys
+sys.path.insert(0, '/opt/airflow')
 from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta
 
-# 直接匯入，因為我們會在 docker-compose 設定 PYTHONPATH
-# 這樣能確保 Airflow 找到你的 src 套件
+
 from src.job_accident.main_pipeline import run_accident_full_pipeline
 
 default_args = {
