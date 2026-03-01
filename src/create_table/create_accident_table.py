@@ -58,8 +58,7 @@ COL_MAP = {
     }
 
 MAIN_COL = ['accident_id','accident_category', 'accident_datetime', 'accident_weekday',
-           'death_count','injury_count','weather_condition','party_sequence','longitude','latitude']
-SUB_COL = ['accident_id','longitude','latitude']
+           'death_count','injury_count','weather_condition','longitude','latitude']
 
 
 ENVIRONMENT_COL =['accident_id','light_condition','road_type_primary_party','speed_limit_primary_party','road_form_major',
@@ -69,7 +68,7 @@ ENVIRONMENT_COL =['accident_id','light_condition','road_type_primary_party','spe
                   'traffic_signal_action','lane_divider_direction_major','lane_divider_direction_minor',
                   'lane_divider_main_general','lane_divider_fast_slow','lane_edge_marking']
 
-HUMAN_BEAHAVIOR_COL =['accident_id','gender',"age","protective_equipment","mobile_device_usage"
+HUMAN_BEAHAVIOR_COL =['accident_id','gender',"age",'party_sequence',"protective_equipment","mobile_device_usage"
                        ,"party_action_major","party_action_minor"]
 
 EVENT_PROCESS_PARTICIPATE_OBJECT_COL2 = ['accident_id','accident_type_major','accident_type_minor',
@@ -90,12 +89,6 @@ MAIN_TABLE_DICT = {
         'death_count':types.INTEGER,
         'injury_count':types.INTEGER,
         'weather_condition':types.VARCHAR(10),
-        'party_sequence':types.INTEGER,
-        'longitude':types.DECIMAL(10,6),
-        'latitude':types.DECIMAL(10,6)
-}
-SUB_TABLE_DICT = {
-        'accident_id': types.VARCHAR(16),
         'longitude':types.DECIMAL(10,6),
         'latitude':types.DECIMAL(10,6)
 }
