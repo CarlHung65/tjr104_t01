@@ -7,24 +7,24 @@ if src_path not in sys.path:
     sys.path.append(src_path)
 import gc
     
-from e_crawler_accident import (auto_scrape_and_download_old_data,
+from src.job_accident.e_crawler_accident import (auto_scrape_and_download_old_data,
                      auto_scrape_recent_data,
                      read_old_data_to_dataframe)
-from t_dataclr_accident import (car_crash_old_data_clean,
+from src.job_accident.t_dataclr_accident import (car_crash_old_data_clean,
                      transform_data_dict)
-from l_tomysql_accident import (load_to_mysql,
+from src.job_accident.l_tomysql_accident import (load_to_mysql,
                            load_to_new_mysql)
-from l_tomysqlgcp_accident import (
+from src.job_accident.l_tomysqlgcp_accident import (
                            load_to_GCP_mysql,
                            load_to_new_GCP_mysql,
                            load_cmp_to_new_GCP_mysql)
-from l_setpkfk_accident import (
+from src.job_accident.l_setpkfk_accident import (
                            setting_pkfk,
                            setting_new_pkfk)
 
 import pandas as pd
 from sqlalchemy import inspect,text,create_engine
-from create_table.create_accident_table import (SAVE_OLD_DATA_DIR,
+from src.create_table.create_accident_table import (SAVE_OLD_DATA_DIR,
                     SEQ_PAGE_URL,
                     SAVE_NEW_DATA_DIR,
                     GCP_DB_URL)

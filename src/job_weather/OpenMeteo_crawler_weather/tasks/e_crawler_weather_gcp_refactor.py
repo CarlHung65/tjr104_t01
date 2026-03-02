@@ -16,23 +16,23 @@ if '/opt/airflow' not in sys.path:
     sys.path.append('/opt/airflow')
 
 # 2. 在sys.path之後才進行import
-from utils.get_table_from_mysql_gcp import get_table_from_sqlserver
-from utils.create_view_table import create_view_table
-from utils.request_weather_api import request_weather_api
+from src.job_weather.OpenMeteo_crawler_weather.utils.get_table_from_mysql_gcp import get_table_from_sqlserver
+from src.job_weather.OpenMeteo_crawler_weather.utils.create_weather_related_tables import create_view_table
+from src.job_weather.OpenMeteo_crawler_weather.utils.request_weather_api import request_weather_api
 
 
 """========================定義TASK 1========================"""
 
 
 @task(retries=3, retry_delay=timedelta(minutes=10), execution_timeout=timedelta(minutes=30))
-def e_get_uniq_acc_geo(target_year: int, database: str) -> pd.DataFrame:
+def e_get_uniq_acc_geo(target_year: int, *, database: str | None = None) -> pd.DataFrame:
     """
         Extract: 從MySQL server讀取車禍資料主表，並取得進位＋去重後的經緯度組合
 
         :param target_year: 要從MySQL資料表查詢哪一年份的車禍資料主表
         :type target_year: int
-        :param database: 要從MySQL哪一個資料庫查詢target_year車禍資料主表
-        :type database: str
+        :param database: 要從MySQL哪一個資料庫查詢target_year車禍資料主表，如不指定，會從預設資料庫查詢
+        :type database: str | None = None
         :return: 將經緯度都進位至小數點後二位，再去掉重複出現的經緯度組合之後的pandas DataFrame
         :rtype: DataFrame
     """
@@ -58,13 +58,13 @@ def e_get_uniq_acc_geo(target_year: int, database: str) -> pd.DataFrame:
             """
 
     # 3. 從MySQL server取得資料表
-    df_acc = get_table_from_sqlserver(database, query)
+    df_acc = get_table_from_sqlserver(query, database=database)
 
     # 4. 同時建立view表，以利未來將accident與weather data兩張表做關聯
     view_ddl = f"""CREATE OR REPLACE VIEW v_acc_approx_loc_{target_year}
                         AS {query};
                 """
-    create_view_table(database, view_ddl)
+    create_view_table(view_ddl, database=database)
 
     # 5. 經緯度簡化 - 進位
     # 在WGS84座標系下，經緯度差0.01度大約相當於緯度方向1110公尺、經度方向約1000公尺。
@@ -116,7 +116,7 @@ def prep_batch_plan(df_acc_unique_loc: pd.DataFrame, target_year: int,
     # 2. 宣告在GCS上存parquet的路徑名稱
     gcs_hook = GCSHook(gcp_conn_id='google_cloud_default')  # 初始化
     bucket_name = 'tjr104-01_weather'
-    save_dir = f"weather_cache/{target_year}"
+    save_dir = f"weather_cache_final/{target_year}"
 
     # 3. 查詢目前GCS的save_dir有幾份檔.parquet，存成set，可以減少時間複雜度至O(1)
     files = gcs_hook.list(bucket_name=bucket_name,
@@ -178,7 +178,7 @@ def e_crawler_weatherapi(df_one_batch: pd.DataFrame,
     # 1. 宣告在GCS上存parquet的路徑名稱
     gcs_hook = GCSHook(gcp_conn_id='google_cloud_default')  # 初始化
     bucket_name = 'tjr104-01_weather'
-    save_dir = f"weather_cache/{target_year}"
+    save_dir = f"weather_cache_final/{target_year}"
 
     # 2. 遍歷df_one_batch，把經緯度的值分別組合出一個字串
     lat_round_lst = [str(lat_num) for lat_num in df_one_batch["lat_round"]]
@@ -196,13 +196,14 @@ def e_crawler_weatherapi(df_one_batch: pd.DataFrame,
 
     # 指派要請求什麼氣象指標
     vars = ["temperature_2m", "apparent_temperature", "rain",
-            "showers", "precipitation", "visibility", "weather_code"]
-
+            "showers", "precipitation", "visibility", "weather_code",
+            "wind_speed_10m", "wind_gusts_10m"]
     # 4. 預備欄位名稱
     col_name = ['datetime_ISO8601', 'temperature_2m_degree',
                 'apparent_temperature_degree', 'rain_mm',
                 'showers_mm', 'precipitation_mm',
                 'visibility_m', 'weather_code',
+                "wind_speed_10m_km_per_h", "wind_gusts_10m_km_per_h",
                 'latitude_round', 'longitude_round']
 
     # 5. calling API
@@ -211,6 +212,9 @@ def e_crawler_weatherapi(df_one_batch: pd.DataFrame,
     # 6. 將請求結果data做簡易清洗後就立即存成parquet，備份資料源。
     if data:
         data = data if isinstance(data, list) else [data]
+
+        # 追蹤寫入失敗的檔案數量
+        failed_files = 0
         for j in range(0, len(data)):  # len(data) == len(lat_round_lst)
             if "hourly" in data[j]:  # data[j] is a dict of one certain location
                 # data[j]["hourly"] is also a dict
@@ -243,10 +247,17 @@ def e_crawler_weatherapi(df_one_batch: pd.DataFrame,
                         data=buffer.getvalue(),  # parquet資料透過data傳入，預設會覆蓋同名檔案
                         mime_type='application/octet-stream')
                 except Exception as e:
+                    failed_files += 1  # 失敗就累計1
                     print(f"第{j+1}/{len(data)} file寫入失敗! {e}")
                 else:
                     print(f"已成功寫入第{j+1}/{len(data)} file: {file_name}!")
 
+        # 迴圈結束後結算失敗率
+        if failed_files / len(data) > 0.2:
+            # 太高則raise Exception，task會進入重試機制
+            raise AirflowException(f"寫入失敗率過高: {failed_files}/{len(data)}失敗")
+        elif failed_files / len(data) > 0:
+            print(f"警告，部分資料寫入失敗，失敗率: {failed_files}/{len(data)}")
     else:
         # 印出前100個字看發生什麼事，印出進度
         print(f"API回傳內容: {str(data)[:100]}")

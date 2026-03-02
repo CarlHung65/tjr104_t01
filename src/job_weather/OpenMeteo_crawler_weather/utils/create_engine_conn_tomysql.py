@@ -2,21 +2,21 @@ import pymysql
 from pymysql.connections import Connection
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
-from dotenv import load_dotenv
 import os
 from urllib.parse import quote_plus
 
 
-load_dotenv()
-username = os.getenv("gcp_mysql_vm_user")
-password = os.getenv("gcp_mysql_vm_passwd")
-host = os.getenv("gcp_mysql_vm_host")
-port = os.getenv("gcp_mysql_vm_port")
-charset = os.getenv("charset", "utf8mb4")
-writer = quote_plus(os.getenv("mail_address", "jessie"))
+# pymysql用
+username = os.getenv("MYSQL_USER")
+password = os.getenv("MYSQL_PASSWORD")
+host = os.getenv("MYSQL_HOST", "mysql8")
+port = os.getenv("MYSQL_PORT", 3306)
+default_database = os.getenv("MYSQL_DATABASE")
+charset = os.getenv("CHARSET", "utf8mb4")
+writer = quote_plus(os.getenv("AIRFLOW_ADMIN_EMAIL", "jessie"))
 
 
-def get_conn_pymysql(database: str) -> Connection:
+def get_conn_pymysql(database: str = default_database) -> Connection:
     conn = pymysql.connect(host=host,
                            port=int(port),
                            user=username,
@@ -28,7 +28,7 @@ def get_conn_pymysql(database: str) -> Connection:
     return conn
 
 
-def get_engine_sqlalchemy(database: str) -> Engine:
+def get_engine_sqlalchemy(database: str = default_database) -> Engine:
     engine = create_engine(
         f"mysql+pymysql://{username}:{password}@{host}:{port}/{database}?charset={charset}",
         echo=False,  # 使用預設值，不印SQL日誌，保持乾淨輸出，生產環境適用
