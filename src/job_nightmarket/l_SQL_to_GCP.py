@@ -7,9 +7,9 @@ from dotenv import load_dotenv
 load_dotenv()
 username = os.getenv("GCP_username")
 password = os.getenv("GCP_password")
-server   = "localhost"
-port     = 3307
-database = "test_night_market"
+server   = "mysql8"
+port     = 3306
+database = "night_market"
 
 # 建立資料庫連線
 conn_str = f"mysql+pymysql://{username}:{password}@{server}:{port}/{database}?charset=utf8mb4"
