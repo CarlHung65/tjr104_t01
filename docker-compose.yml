@@ -3,6 +3,8 @@ x-airflow-common: &airflow-common
   env_file:
     - .env
   environment:
+    DB_HOST: "mysql8"
+    DB_PORT: "3306"
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__CORE__LOAD_EXAMPLES: "False"
     PYTHONPATH: "/opt/airflow/"
