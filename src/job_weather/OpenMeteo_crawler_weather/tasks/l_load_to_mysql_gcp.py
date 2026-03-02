@@ -15,9 +15,9 @@ if '/opt/airflow' not in sys.path:
     sys.path.append('/opt/airflow')
 
 # 2. 在sys.path之後才進行import
-from utils.create_engine_conn_tomysql import get_engine_sqlalchemy, get_conn_pymysql, writer
-from utils.create_weather_hist_table import create_weather_hist_table
-from utils.get_table_from_mysql_gcp import get_table_from_sqlserver
+from src.job_weather.OpenMeteo_crawler_weather.utils.create_engine_conn_tomysql import get_engine_sqlalchemy, get_conn_pymysql, writer
+from src.job_weather.OpenMeteo_crawler_weather.utils.create_weather_related_tables import create_weather_hist_table
+from src.job_weather.OpenMeteo_crawler_weather.utils.get_table_from_mysql_gcp import get_table_from_sqlserver
 
 
 def t_dataclr_weather_hist(df_weather_raw: pd.DataFrame,
@@ -54,13 +54,16 @@ def t_dataclr_weather_hist(df_weather_raw: pd.DataFrame,
 
     df_weather_mrg = df_weather_mrg.loc[:, ["datetime_ISO8601", "temperature_2m_degree",
                                             "apparent_temperature_degree",
-                                            "rain_mm", "precipitation_mm", "visibility_m",
-                                            "weather_code", "longitude_round", "latitude_round"]]
+                                            "rain_mm", "precipitation_mm",
+                                            "wind_speed_10m_km_per_h", "wind_gusts_10m_km_per_h",
+                                            "visibility_m", "weather_code",
+                                            "longitude_round", "latitude_round"]]
 
     # 3. 正式置換成寫入資料表所需的欄位名稱
     df_weather_mrg.columns = ["observation_datetime", "temperature_degree",
                               "apparent_temperature_degree", "rain_within_hour_mm",
-                              "precipitation_mm", "visibility_m", "weather_code",
+                              "precipitation_mm", "wind_speed_10m_km_per_h", "wind_gusts_10m_km_per_h",
+                              "visibility_m", "weather_code",
                               "longitude_round", "latitude_round"]
 
     # 4. 生成UK，由於構成業務邏輯唯一的組成有observation_datetime、long_round、lat_round，後二者是浮點數，
@@ -107,7 +110,7 @@ def l_summary_report(target_year: int, upstream) -> str:
     # 1. 找出該年份的所有Parquet之檔案路徑
     gcs_hook = GCSHook(gcp_conn_id='google_cloud_default')  # 初始化
     bucket_name = 'tjr104-01_weather'
-    save_dir = f"weather_cache/{target_year}"
+    save_dir = f"weather_cache_final/{target_year}"
     all_files = gcs_hook.list(bucket_name=bucket_name,
                               prefix=save_dir)
     all_files = [f for f in all_files if f.endswith(".parquet")]
@@ -122,7 +125,7 @@ def l_summary_report(target_year: int, upstream) -> str:
 
 
 @task(retries=2, retry_delay=timedelta(minutes=10), execution_timeout=timedelta(hours=4))
-def l_transform_and_load_to_mysql(target_year: int, database: str,
+def l_transform_and_load_to_mysql(target_year: int, *, database: str | None = None,
                                   upstream) -> None:
     """
         Load: 打開GCS中存好的parquet檔，並清理(T)後直接寫入MySQL。採批次處理，以for-loop按批執行T+L，
@@ -130,8 +133,8 @@ def l_transform_and_load_to_mysql(target_year: int, database: str,
 
         :param target_year: 要清理與寫入資料庫的資料所屬年份
         :type target_year: int
-        :param database: 打算寫入的資料庫名稱
-        :type database: str
+        :param database: 打算寫入的資料庫名稱，如不指定(None)，則會寫入預設資料庫
+        :type database: str | None = None
         :param upstream: 此任務依賴於哪個上游任務之return value(通常是l_summary_report() func.)
         :return: 
         :rtype: None
@@ -140,7 +143,7 @@ def l_transform_and_load_to_mysql(target_year: int, database: str,
     # 1. 讀取車禍view表
     dql_text = f"""SELECT approx_accident_datetime, longitude_round, latitude_round
 	                    FROM v_acc_approx_loc_{target_year};"""
-    df_view_loc_acc = get_table_from_sqlserver(database, dql_text)
+    df_view_loc_acc = get_table_from_sqlserver(dql_text, database=database)
 
     # 2. 保險起見再對齊一次資料型態
     df_view_loc_acc["approx_accident_datetime"] = df_view_loc_acc["approx_accident_datetime"].astype(
@@ -159,7 +162,7 @@ def l_transform_and_load_to_mysql(target_year: int, database: str,
     # 5. 找出該年份的所有Parquet之檔案路徑
     gcs_hook = GCSHook(gcp_conn_id='google_cloud_default')  # 初始化
     bucket_name = 'tjr104-01_weather'
-    save_dir = f"weather_cache/{target_year}"
+    save_dir = f"weather_cache_final/{target_year}"
     all_files = gcs_hook.list(bucket_name=bucket_name,
                               prefix=save_dir)
     all_files = [f for f in all_files if f.endswith(".parquet")]
@@ -171,7 +174,7 @@ def l_transform_and_load_to_mysql(target_year: int, database: str,
     # 6. 先確保表已存在
     this_year = datetime.now().year
     table_name = "weather_hourly_history_final" if target_year < this_year else "weather_hourly_now"
-    create_weather_hist_table(database, table_name)
+    create_weather_hist_table(table_name, database=database)
 
     # 7. 逐一檔案處理，避免記憶體爆炸
     try:
@@ -247,91 +250,4 @@ def l_transform_and_load_to_mysql(target_year: int, database: str,
         # 9. 關閉cursor與conn
         cursor.close()
         conn.close()
-        return f"{target_year}_load_done"
-
-
-@task
-def l_load_to_mysql(target_year: int, database: str,
-                    df_uniq_loc_acc: pd.DataFrame,
-                    upstream) -> None:
-    """已棄用"""
-    # 1. 遍歷該年份的所有 Parquet之檔案路徑
-    gcs_hook = GCSHook(gcp_conn_id='google_cloud_default')  # 初始化
-    bucket_name = 'tjr104-01_weather'
-    save_dir = f"weather_cache/{target_year}"
-    all_files = gcs_hook.list(bucket_name=bucket_name,
-                              prefix=save_dir)
-    all_files = [f for f in all_files if f.endswith(".parquet")]
-
-    if not all_files:
-        print(f"No weather data found for {target_year}")
-        return None
-
-    # 2. 再次讀取車禍資料表並取得去重後的經緯度
-    df_acc = df_uniq_loc_acc.copy()
-
-    # 3. 準備與GCP VM上的MySQL server的連線
-    engine = get_engine_sqlalchemy(database)
-
-    # 4. 設定每 100 個檔案處理一次
-    batch_size = 100
-    for i in range(0, len(all_files), batch_size):
-        batch_files = all_files[i: i + batch_size]
-
-        # 讀取這一小批
-        df_list = []
-        for file_path in batch_files:
-            file_data = gcs_hook.download(
-                bucket_name=bucket_name, object_name=file_path)
-            df_list.append(pd.read_parquet(io.BytesIO(file_data)))
-
-        df_weather = pd.concat(df_list, ignore_index=True)
-
-        # 4-1. 合併資料 (根據 經度、緯度進行 Join)
-        df_weather_final = df_weather.merge(df_acc, how="left",
-                                            left_on=["latitude_round",
-                                                     "longitude_round"],
-                                            right_on=[
-                                                "lat_round", "lon_round"],
-                                            suffixes=["_w", "_a"])
-
-        # df_weather_final = df_weather_final.drop(["lat_round", "lon_round"])
-        data_list = df_weather_final.where(pd.notnull(
-            df_weather_final), None).to_dict(orient='records')
-        # data_list = df_weather_final.to_dict(orient='records')
-
-        # 取得欄位名稱
-        cols = df_weather_final.columns.tolist()
-        table_name = f"accident_weather_{target_year}"
-
-        del df_weather_final, df_weather
-        import gc
-        gc.collect()
-        with engine.begin() as conn:
-            if data_list and i == 0:
-                # 4-1. 強制刪除舊表
-                conn.execute(text(f"DROP TABLE IF EXISTS {table_name}"))
-
-                # 4-2. 手動建立表結構 (簡單地將所有欄位設為 TEXT，或根據需要調整)
-                # 根據欄位名生成 CREATE TABLE 語句
-                create_stmt = f"CREATE TABLE {table_name} (" + ", ".join(
-                    [f"`{c}` TEXT" for c in cols]) + ")"
-                conn.execute(text(create_stmt))
-
-            # 4-3. 正式寫入資料
-            # 使用 SQLAlchemy 的 bind parameter 語法 (MySQL 使用 :column_name)
-            insert_stmt = text(
-                f"INSERT INTO {table_name} ({', '.join([f'`{c}`' for c in cols])}) "
-                f"VALUES ({', '.join([':' + c for c in cols])})"
-            )
-
-            # 4-4. 執行批量插入
-            conn.execute(insert_stmt, data_list)
-
-            # 4-5. 清除記憶體
-            del data_list, df_list
-            import gc
-            gc.collect()
-            print("清除記憶體完成!")
-    print(f"Successfully loaded {target_year} data to GCP MySQL.")
-    return None
+    return f"{target_year}_load_done"

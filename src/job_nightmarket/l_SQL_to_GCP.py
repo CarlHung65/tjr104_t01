@@ -17,7 +17,7 @@ engine = create_engine(conn_str)
 
 # 讀取 CSV
 def load_csv():
-    csv_path = r".\src\job_nightmarket\Data_clean\nightmarket_clean.csv"
+    csv_path = r"./src/job_nightmarket/Data_clean/nightmarket_clean.csv"
     if not os.path.exists(csv_path):
         raise FileNotFoundError(f"找不到 CSV 檔案：{csv_path}")
 
