@@ -3,7 +3,7 @@ x-airflow-common: &airflow-common
   env_file:
     - .env
   environment:
-    AIRFLOW__CONFIG__FASTAPI_API_URL: "http://host.docker.internal:18080"
+    AIRFLOW__CONFIG__FASTAPI_API_URL: "http://airflow_api_server:8080"
     AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.session,airflow.api.auth.backend.basic_auth"
     DB_HOST: "mysql8"
     DB_PORT: "3306"
