@@ -46,6 +46,7 @@ services:
       redis-server
       --requirepass ${REDIS_PASSWORD}
       --appendonly yes
+      --maxmemory 2gb
     ports:
       - "6379:6379"
     volumes:

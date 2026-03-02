@@ -1,27 +1,28 @@
 import sys
 import os
-# 強制將專案根目錄 (/opt/airflow) 加入搜尋路徑
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+
+# --- 強制路徑設定區 (必須放在所有 src import 之前) ---
+# 獲取專案根目錄的絕對路徑 /opt/airflow
+BASE_DIR = os.path.abspath("/opt/airflow")
+JOB_DIR = os.path.join(BASE_DIR, "src/job_accident")
+# 確保這些路徑出現在搜尋清單的最前面
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+if JOB_DIR not in sys.path:
+    sys.path.insert(0, JOB_DIR)
 
 from airflow import DAG
-#from airflow.operators.python import PythonOperator
 #修正 Deprecated 警告
 from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta
-
-
-# 1. 確保 Airflow 找到你的 src 邏輯
-sys.path.append('/app')
-
-# 2. 引入你剛才整合好的主程式進入點
-# 假設你的主程式檔名是 main_etl.py
-from src.job_accident.main_pipeline import run_accident_full_pipeline
+from main_pipeline import run_accident_full_pipeline
 
 # 3. 指揮官設定 (剛才討論的 retry 邏輯)
 default_args = {
     'owner': 'andrew',
     'depends_on_past': False,
-    'start_date': datetime(2026, 2, 12),
+    'start_date': datetime(2026, 2, 23),
     'retries': 1,
     'retry_delay': timedelta(minutes=5),
     'email_on_failure': False, # 暫時不發信
@@ -31,7 +32,7 @@ default_args = {
 with DAG(
     dag_id='accident_gcp_pipeline',
     default_args=default_args,
-    schedule_interval='@daily',
+    schedule='@daily',
     catchup=False,
 ) as dag:
 

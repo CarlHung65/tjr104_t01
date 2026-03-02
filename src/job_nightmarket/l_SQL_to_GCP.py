@@ -17,7 +17,7 @@ engine = create_engine(conn_str)
 
 # 讀取 CSV
 def load_csv():
-    csv_path = r".\Data_clean\nightmarket_clean.csv"
+    csv_path = r".\src\job_nightmarket\Data_clean\nightmarket_clean.csv"
     if not os.path.exists(csv_path):
         raise FileNotFoundError(f"找不到 CSV 檔案：{csv_path}")
 
@@ -34,8 +34,8 @@ def create_schema():
     CREATE TABLE IF NOT EXISTS Night_market_merge (
         nightmarket_id              VARCHAR(20) NOT NULL UNIQUE,
         nightmarket_name            VARCHAR(30),
-        nightmarket_latitude        DECIMAL(15,4),
-        nightmarket_longitude       DECIMAL(15,4),
+        nightmarket_latitude        DECIMAL(10,6),
+        nightmarket_longitude       DECIMAL(10,6),
         nightmarket_area_road       VARCHAR(30),
         nightmarket_zipcode         VARCHAR(10),
         nightmarket_zipcode_name    VARCHAR(10),
@@ -44,10 +44,10 @@ def create_schema():
         nightmarket_city            VARCHAR(10),
         nightmarket_opening_hours   VARCHAR(400),
         nightmarket_url             VARCHAR(200),
-        nightmarket_northeast_latitude   DECIMAL(15,4),
-        nightmarket_northeast_longitude  DECIMAL(15,4),
-        nightmarket_southwest_latitude   DECIMAL(15,4),
-        nightmarket_southwest_longitude  DECIMAL(15,4)
+        nightmarket_northeast_latitude   DECIMAL(10,6),
+        nightmarket_northeast_longitude  DECIMAL(10,6),
+        nightmarket_southwest_latitude   DECIMAL(10,6),
+        nightmarket_southwest_longitude  DECIMAL(10,6)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     """
     with engine.connect() as conn:
