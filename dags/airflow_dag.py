@@ -1,12 +1,11 @@
 import os
 import sys
+# 確保路徑正確
+sys.path.insert(0, '/opt/airflow')
 from airflow import DAG
 from airflow.decorators import task
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine
-
-# 確保路徑正確
-sys.path.insert(0, '/opt/airflow')
 
 # 匯入你原本定義好的功能函式
 from src.job_accident.main_pipeline import is_db_ready
