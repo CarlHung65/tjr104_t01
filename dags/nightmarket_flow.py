@@ -1,5 +1,4 @@
 from airflow import DAG
-# 修正匯入路徑 (Airflow 3 建議方式)
 from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta
 import sys
@@ -19,7 +18,7 @@ import l_SQL_to_GCP
 default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
-    'start_date': datetime(2026, 3, 1), # 根據當前年份設定 
+    'start_date': datetime(2026, 3, 1),
     'retries': 1,
     'retry_delay': timedelta(minutes=5),
 }
