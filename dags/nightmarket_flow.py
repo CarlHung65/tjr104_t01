@@ -1,4 +1,4 @@
-from airflow import DAG
+from airflow import DAG 
 from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta
 import sys
@@ -28,7 +28,7 @@ with DAG(
     default_args=default_args,
     description='全台夜市資料自動化 ETL 流程',
     # 修正處：將 schedule_interval 改為 schedule
-    schedule='@weekly', 
+    schedule='@monthly', 
     catchup=False,
     tags=['nightmarket', 'ETL'],
 ) as dag:
