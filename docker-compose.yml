@@ -71,7 +71,7 @@ services:
     restart: "no"
     command: >
       bash -c "
-      airflow db init &&
+      airflow db migrate &&
       airflow users create \
         --username ${AIRFLOW_ADMIN_USER} \
         --password ${AIRFLOW_ADMIN_PASSWORD} \
