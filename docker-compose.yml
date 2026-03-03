@@ -3,11 +3,13 @@ x-airflow-common: &airflow-common
   env_file:
     - .env
   environment:
+    AIRFLOW__CONFIG__FASTAPI_API_URL: "http://airflow_api_server:8080"
+    AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.session,airflow.api.auth.backend.basic_auth"
+    AIRFLOW__TASK_SDK__ENABLED: "True"
+    AIRFLOW__CORE__TASK_RUNNER: "StandardTaskRunner"
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__CORE__LOAD_EXAMPLES: "False"
     PYTHONPATH: "/opt/airflow/"
-    AIRFLOW__CORE__PARALLELISM: 1
-    AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: 1
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqldb://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql8:3306/${MYSQL_DATABASE}
     AIRFLOW__API__EXECUTION_API_SERVER_URL: http://airflow-api-server:8080/api/v1
   
