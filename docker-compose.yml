@@ -3,7 +3,9 @@ x-airflow-common: &airflow-common
   env_file:
     - .env
   environment:
-    AIRFLOW__TASK_SDK__ENABLED: "False"
+    AIRFLOW__CONFIG__FASTAPI_API_URL: "http://airflow_api_server:8080"
+    AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.session,airflow.api.auth.backend.basic_auth"
+    AIRFLOW__TASK_SDK__ENABLED: "True"
     AIRFLOW__CORE__TASK_RUNNER: "StandardTaskRunner"
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__CORE__LOAD_EXAMPLES: "False"
