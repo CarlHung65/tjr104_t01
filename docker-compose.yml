@@ -3,31 +3,59 @@ x-airflow-common: &airflow-common
   env_file:
     - .env
   environment:
+    # =====================
+    # Airflow Core
+    # =====================
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__PARALLELISM: 2
+    AIRFLOW__CORE__DAGBAG_IMPORT_TIMEOUT: 60
+    AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+    AIRFLOW__CORE__TASK_RUNNER: StandardTaskRunner
+
+    # =====================
+    # Scheduler（重點）
+    # =====================
+    AIRFLOW__SCHEDULER__TASK_QUEUED_TIMEOUT: 300
+    AIRFLOW__SCHEDULER__ZOMBIE_TASK_THRESHOLD: 600
+    AIRFLOW__SCHEDULER__SCHEDULER_HEARTBEAT_SEC: 5
+
+    # =====================
+    # DAG Processor
+    # =====================
+    AIRFLOW__DAG_PROCESSOR__DAG_FILE_PROCESSOR_TIMEOUT: 120
+
+    # =====================
+    # API / SDK
+    # =====================
     AIRFLOW__CONFIG__FASTAPI_API_URL: "http://airflow_api_server:8080"
+    AIRFLOW__API__EXECUTION_API_SERVER_URL: "http://airflow-api-server:8080/api/v1"
     AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.session,airflow.api.auth.backend.basic_auth"
     AIRFLOW__TASK_SDK__ENABLED: "True"
-    AIRFLOW__CORE__TASK_RUNNER: "StandardTaskRunner"
-    AIRFLOW__CORE__EXECUTOR: LocalExecutor
-    AIRFLOW__CORE__LOAD_EXAMPLES: "False"
-    PYTHONPATH: "/opt/airflow/"
+
+    # =====================
+    # DB
+    # =====================
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqldb://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql8:3306/${MYSQL_DATABASE}
-    AIRFLOW__API__EXECUTION_API_SERVER_URL: http://airflow-api-server:8080/api/v1
-  
+
+    PYTHONPATH: "/opt/airflow/"
+
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
     - ./src:/opt/airflow/src
+
   depends_on:
     mysql8:
       condition: service_healthy
+
   restart: always
 
 services:
   mysql8:
     image: mysql:8.0.36
-    env_file:
-    - .env
     container_name: mysql8
+    env_file:
+      - .env
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
@@ -63,8 +91,6 @@ services:
       timeout: 3s
       retries: 10
 
-
-  # 一次性初始化：建表 + 建 admin
   airflow-init:
     <<: *airflow-common
     container_name: airflow_init
@@ -72,13 +98,14 @@ services:
     command: >
       bash -c "
       airflow db migrate &&
-      airflow users create \
-        --username ${AIRFLOW_ADMIN_USER} \
-        --password ${AIRFLOW_ADMIN_PASSWORD} \
-        --firstname Air \
-        --lastname Flow \
-        --role Admin \
-        --email ${AIRFLOW_ADMIN_EMAIL} || true
+      airflow users create
+      --username ${AIRFLOW_ADMIN_USER}
+      --password ${AIRFLOW_ADMIN_PASSWORD}
+      --firstname Air
+      --lastname Flow
+      --role Admin
+      --email ${AIRFLOW_ADMIN_EMAIL}
+      || true
       "
 
   airflow-api-server:
