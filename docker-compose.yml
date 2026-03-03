@@ -13,6 +13,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__PARALLELISM: 1
     AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: 1
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqldb://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql8:3306/${MYSQL_DATABASE}
+    AIRFLOW__API__EXECUTION_API_SERVER_URL: http://airflow-api-server:8080/api/v1
   
   volumes:
     - ./dags:/opt/airflow/dags
