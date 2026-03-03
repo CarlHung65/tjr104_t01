@@ -4,7 +4,7 @@ import sys
 sys.path.insert(0, '/opt/airflow')
 from airflow import DAG
 from airflow.decorators import task
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta,timezone
 from sqlalchemy import create_engine
 
 # 匯入你原本定義好的功能函式
@@ -30,7 +30,8 @@ from src.create_table.create_accident_table import GCP_DB_URL, SAVE_OLD_DATA_DIR
 
 default_args = {
     'owner': 'andrew',
-    'start_date': datetime(2026, 3, 1),
+    'start_date': datetime(2026, 2, 25, 5, 00,
+                        tzinfo=timezone(offset=timedelta(hours=8))),
     'retries': 1,
     'retry_delay': timedelta(minutes=5),
 }
