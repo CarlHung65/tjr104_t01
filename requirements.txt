@@ -1,26 +1,28 @@
-# --- Airflow 3.0 核心與資料庫 ---
+# --- 核心修正 (避開 MappedAnnotationError) ---
 apache-airflow==3.0.6
-sqlalchemy>=2.0.25,<3.0
-mysqlclient>=2.2.4,<3.0
-pymysql>=1.1.0,<2.0
-redis>=7.1.1,<8.0.0
-pendulum>=3.2.1,<4.0
+sqlalchemy>=1.4.0,<2.0.0
+pendulum>=3.0.0,<4.0.0
 
-# --- 數據處理與地理資訊 ---
-pandas>=2.2.3,<2.3
+# --- 資料庫驅動 ---
+mysqlclient>=2.2.4
+pymysql>=1.1.0
+redis>=7.1.0
+
+# --- 交通數據處理專案必備 ---
+pandas>=2.2.3
 numpy>=1.26,<2.0
-pyarrow>=15.0.0,<16.0.0
-folium>=0.15.1
-googlemaps>=4.10.0,<5.0
+pyarrow>=15.0.0
+folium>=0.15.0
+googlemaps>=4.10.0
 
-# --- 爬蟲與網頁工具 ---
-beautifulsoup4>=4.12.3,<5.0
-requests>=2.31.0,<3.0
-selenium>=4.20.0,<5.0
-webdriver-manager>=4.0.1,<5.0
+# --- 爬蟲與自動化 ---
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+selenium>=4.20.0
+webdriver-manager>=4.0.0
 
-# --- 其他工具 ---
-python-dotenv>=1.0.1,<2.0
-streamlit>=1.30.0,<1.40.0
+# --- 環境與 UI ---
+python-dotenv>=1.0.0
+streamlit>=1.30.0
 google-cloud-storage>=2.14.0
-graphviz>=0.20.1
+graphviz>=0.20.0
