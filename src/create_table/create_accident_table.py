@@ -106,8 +106,9 @@ ENVIRONMENT_TABLE_DICT={'accident_id':types.VARCHAR(16),'light_condition':types.
                   'lane_edge_marking':types.BOOLEAN}
 
 HUMAN_BEAHAVIOR_DICT = {'accident_id': types.VARCHAR(16),'gender':types.VARCHAR(20),
-                       'age':types.SMALLINT,'protective_equipment':types.VARCHAR(50),
-                       'mobile_device_usage':types.VARCHAR(20),'party_action_major':types.VARCHAR(20),
+                       'age':types.SMALLINT,'party_sequence':types.INTEGER,
+                       'protective_equipment':types.VARCHAR(50),'mobile_device_usage':types.VARCHAR(20),
+                       'party_action_major':types.VARCHAR(20),
                        'party_action_minor':types.VARCHAR(20)}
 
 EVENT_PROCESS_PARTICIPATE_OBJECT_DICT1= {'accident_id': types.VARCHAR(16),'accident_type_major':types.VARCHAR(20),
