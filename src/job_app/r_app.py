@@ -2,6 +2,7 @@ import streamlit as st
 from streamlit_folium import st_folium
 import c_data_service as ds
 import c_ui as ui
+import time
 
 # 1. 頁面設定
 st.set_page_config(
@@ -10,6 +11,27 @@ st.set_page_config(
     initial_sidebar_state="expanded")
 
 def main():
+    splash = st.empty()
+    with splash.container():
+        st.markdown("""
+        <style>
+            .splash-container { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 70vh; background-color: #ffffff; animation: fadeIn 1s; }
+            .loading-text { color: #444; font-family: "Microsoft JhengHei", sans-serif; margin-top: 20px; }
+            .sub-text { color: #888; font-size: 0.9em; }
+        </style>
+        <div class="splash-container">
+            <img src="https://media.giphy.com/media/l0HlOaQcLJ2hHpYcw/giphy.gif" width="150" style="border-radius: 10px;">
+            <h2 class="loading-text">🚦 正在分析全台路況數據...</h2>
+            <p class="sub-text">整合 <b>150 萬筆</b> 交通事故資料 x <b>300+</b> 夜市圖資</p>
+            <div style="width: 300px; height: 4px; background: #eee; margin-top: 15px; border-radius: 2px;">
+                <div style="width: 100%; height: 100%; background: #ff4b4b; animation: loading 2s infinite;"></div>
+            </div>
+            <style>@keyframes loading { 0% { width: 0%; } 50% { width: 70%; } 100% { width: 100%; } }</style>
+        </div>
+        """, unsafe_allow_html=True)
+        time.sleep(2.5) 
+    splash.empty()  # 載入首頁，清空等待動畫
+
     # 取得全台資料 (熱力圖數據 & 夜市清單)
     traffic_global = ds.get_taiwan_heatmap_data()
     df_market = ds.get_all_nightmarkets()
@@ -78,11 +100,13 @@ def main():
         m = ui.build_map(
             is_overview = True,
             target_market = None,
-            layers = home_layers,
-            weather_data = None,
+            layers = layers,
+            dynamic_zoom = None,  
+            radius_m = 500,       # 半徑參數
             traffic_global = traffic_global,
             df_local = None,
-            df_market = df_market)
+            df_market = df_market
+        )
 
         # 顯示地圖
         st_folium(m, height=800, use_container_width=True, returned_objects=[])

@@ -2,7 +2,9 @@ import pandas as pd
 import numpy as np
 from sqlalchemy import text
 from c_db import get_db_engine
-from r_cache import get_cache, set_cache
+from r_cache import get_cache, set_cache, REDIS_POOL
+import threading
+import streamlit as st
 
 # =========================================================
 #  1. 夜市資料
@@ -82,7 +84,7 @@ def get_taiwan_heatmap_data():
     cached = get_cache(cache_key)
     if cached: return cached
     engine = get_db_engine()
-    sql = "SELECT lat, lon, count FROM `test_accident`.`view_accident_heatmap` WHERE count >= 3"
+    sql = "SELECT lat, lon, count FROM `test_accident`.`tbl_accident_heatmap` WHERE count >= 3"
     try:
         with engine.connect() as conn:
             df = pd.read_sql(sql, conn)
@@ -92,93 +94,81 @@ def get_taiwan_heatmap_data():
             return result
     except: return []
 
-def get_nearby_accidents(lat, lon, radius_km=0.5, sample=True):
     """
     回傳: 地圖點位, 統計數據, 圖表數據, 年份詳細統計
     sample: 是否進行資料抽樣 (預設 True 用於地圖顯示, False 用於分析)
     """
-    sample_tag = "sample" if sample else "full"
-    cache_key = f"traffic:nearby_v10:{round(lat,4)}_{round(lon,4)}_{radius_km}_{sample_tag}"
-    cached = get_cache(cache_key)
-    if cached: return cached
 
+@st.cache_data(ttl=3600, show_spinner=False) 
+def get_nearby_accidents(lat, lon, radius_km=0.5, sample=True):
+    strict_key = f"traffic:nearby_v12:{lat:.4f}_{lon:.4f}_3.0_all_sample"
+    cached = get_cache(strict_key)
+    if not cached:
+        airflow_key = f"traffic:nearby_v12:{round(lat,4)}_{round(lon,4)}_3.0_all_sample"
+        if strict_key != airflow_key:
+            print(f"比對未命中，嘗試讀取 Airflow 相容金鑰: {airflow_key} ...")
+            cached = get_cache(airflow_key)
+
+    # ==========================================
+    # 成功攔截快取後的處理
+    # ==========================================
+    if cached:
+        df_all, _, _, _ = cached 
+        distances = haversine_distance(lat, lon, df_all['latitude'].values, df_all['longitude'].values)
+        df_filtered = df_all[distances <= radius_km]
+        print(f"快取讀取成功！提取 {radius_km}km 範圍")
+        return (df_filtered, {"total": len(df_filtered)}, {}, pd.DataFrame())
+
+    # ==========================================
+    # 🚨 階段 3：徹底無快取，去 MySQL 撈取 final 表 (附帶背景預熱)
+    # ==========================================
+    print(f"❌無快取，啟動DB 查詢 {radius_km}km 範圍...")
     engine = get_db_engine()
-    offset = float(radius_km) / 111.0
+    
     sql = text("""
-        SELECT 
-            m.accident_datetime,
-            m.latitude, 
-            m.longitude, 
-            m.death_count, 
-            m.injury_count, 
-            m.weather_condition,
-            MAX(COALESCE(p.cause_analysis_minor_primary, p.cause_analysis_major_primary, '未知')) AS primary_cause
-        FROM `test_accident`.`accident_sq1_main` m
-        LEFT JOIN `test_accident`.`accident_sq1_process` p 
-            ON m.accident_id = p.accident_id
-        WHERE m.latitude BETWEEN :min_lat AND :max_lat
-          AND m.longitude BETWEEN :min_lon AND :max_lon
-        GROUP BY m.accident_id
+        SELECT accident_datetime, latitude, longitude, death_count, 
+               injury_count, weather_condition, primary_cause,
+               Year, Hour, Weekday_CN,
+               CASE 
+                   WHEN Hour >= 6 AND Hour < 12 THEN '早'
+                   WHEN Hour >= 12 AND Hour < 18 THEN '午'
+                   ELSE '晚'
+               END AS Period
+        FROM `test_accident`.`tbl_accident_analysis_final`
+        WHERE latitude BETWEEN :min_lat AND :max_lat 
+          AND longitude BETWEEN :min_lon AND :max_lon
     """)
-    params = {"min_lat": lat-offset, "max_lat": lat+offset, "min_lon": lon-offset, "max_lon": lon+offset}
 
-    df = pd.DataFrame()
+    max_offset_fast = radius_km / 111.0
+    params_fast = {"min_lat": lat-max_offset_fast, "max_lat": lat+max_offset_fast, "min_lon": lon-max_offset_fast, "max_lon": lon+max_offset_fast}
+    
     try:
         with engine.connect() as conn:
-            df = pd.read_sql(sql, conn, params=params)
+            df_fast = pd.read_sql(sql, conn, params=params_fast)
     except Exception as e:
-        print(f"查詢失敗: {e}")
-        return pd.DataFrame(), {"total":0}, {}, pd.DataFrame()
-    
-    if df.empty: 
         return pd.DataFrame(), {"total":0}, {}, pd.DataFrame()
 
-    df['accident_datetime'] = pd.to_datetime(df['accident_datetime'], errors='coerce')
-    df['Year'] = df['accident_datetime'].dt.year
-    df['Hour'] = df['accident_datetime'].dt.hour
-    df['Weekday'] = df['accident_datetime'].dt.day_name()
-    
-    def get_period(h):
-        if 6 <= h < 12: return '早'
-        elif 12 <= h < 18: return '午'
-        else: return '晚'
-    df['Period'] = df['Hour'].apply(get_period)
-    
-    wd_map = {'Monday':'週一', 'Tuesday':'週二', 'Wednesday':'週三', 'Thursday':'週四', 'Friday':'週五', 'Saturday':'週六', 'Sunday':'週日'}
-    df['Weekday_CN'] = df['Weekday'].map(wd_map)
+    def background_warmup():
+        print(f"背景任務啟動：正在為此夜市撈取 3.0km Master Bag...")
+        try:
+            max_offset_bg = 3.0 / 111.0
+            params_bg = {"min_lat": lat-max_offset_bg, "max_lat": lat+max_offset_bg, "min_lon": lon-max_offset_bg, "max_lon": lon+max_offset_bg}
+            with engine.connect() as conn_bg:
+                df_bg = pd.read_sql(sql, conn_bg, params=params_bg)
+            if not df_bg.empty:
+                set_cache(strict_key, (df_bg, {"total": len(df_bg)}, {}, pd.DataFrame()), ttl=172800)
+                print("背景任務完成！")
+        except Exception as e:
+            pass
 
-    stats = {
-        "total": len(df),
-        "dead": int(df['death_count'].sum()),
-        "hurt": int(df['injury_count'].sum())}
+    bg_thread = threading.Thread(target=background_warmup)
+    bg_thread.start()
+
+    if df_fast.empty: return pd.DataFrame(), {"total":0}, {}, pd.DataFrame()
+    distances = haversine_distance(lat, lon, df_fast['latitude'].values, df_fast['longitude'].values)
+    df_filtered = df_fast[distances <= radius_km]
     
-    top10 = df['primary_cause'].value_counts().head(10).reset_index()
-    top10.columns = ['肇因', '件數']
-    year_trend = df.groupby('Year').size().reset_index(name='件數')
-    week_stats = df.groupby('Weekday_CN').size().reindex(['週一','週二','週三','週四','週五','週六','週日'], fill_value=0).reset_index(name='件數')
-    hour_stats = df.groupby('Hour').size().reset_index(name='件數')
-    
-    if 'weather_condition' in df.columns:
-        weather_stats = df['weather_condition'].value_counts().reset_index()
-        weather_stats.columns = ['天氣', '件數']
-    else:
-        weather_stats = pd.DataFrame(columns=['天氣', '件數'])
-
-    charts = {'top10': top10, 'year': year_trend, 'week': week_stats, 'hour': hour_stats, 'weather': weather_stats}
-
-    yearly_grp = df.groupby('Year').agg({'death_count': 'sum', 'injury_count': 'sum', 'accident_datetime': 'count'}).rename(columns={'accident_datetime': 'Total', 'death_count':'Dead', 'injury_count':'Hurt'})
-    period_grp = pd.crosstab(df['Year'], df['Period'])
-    for p in ['早', '午', '晚']:
-        if p not in period_grp.columns: period_grp[p] = 0
-    yearly_stats = pd.concat([yearly_grp, period_grp], axis=1).sort_index(ascending=False).reset_index()
-
-    if sample:
-        map_df = df.sample(n=500, random_state=42) if len(df) > 500 else df
-    else:
-        map_df = df
-    result = (map_df, stats, charts, yearly_stats)
-    set_cache(cache_key, result, ttl=3600)
-    return result
+    return (df_filtered, {"total": len(df_filtered)}, {}, pd.DataFrame())
 
 def get_pedestrian_stats_by_region_monthly():
     cache_key = "analysis:pedestrian_region_month" 
@@ -196,13 +186,51 @@ def get_pedestrian_stats_by_region_monthly():
             ELSE '南部'
         END as Region,
         COUNT(DISTINCT accident_id) as Count
-    FROM `test_accident`.`view_pedestrian_accident`
+    FROM `test_accident`.`tbl_pedestrian_accident`
     GROUP BY YearMonth, Region
     ORDER BY YearMonth, Region
     """
     try:
         with engine.connect() as conn:
             df = pd.read_sql(sql, conn)
+        set_cache(cache_key, df.to_dict('records'), ttl=86400)
+        return df
+    except Exception as e:
+        return pd.DataFrame()
+
+def get_pedestrian_trend(lat=None, lon=None, radius_km=0.5):
+    if lat is None or lon is None:
+        cache_key = "analysis:pedestrian_trend_global_v2"
+        where_clause = ""
+        params = {}
+    else:
+        cache_key = f"analysis:pedestrian_trend_local_v2:{round(lat,4)}_{round(lon,4)}"
+        offset = float(radius_km) / 111.0
+        where_clause = """
+            WHERE latitude BETWEEN :min_lat AND :max_lat
+              AND longitude BETWEEN :min_lon AND :max_lon
+        """
+        params = {
+            "min_lat": lat - offset, "max_lat": lat + offset, 
+            "min_lon": lon - offset, "max_lon": lon + offset
+        }
+
+    cached = get_cache(cache_key)
+    if cached: return pd.DataFrame(cached)
+
+    engine = get_db_engine()
+    sql = text(f"""
+    SELECT 
+        DATE_FORMAT(accident_datetime, '%Y-%m') as YearMonth,
+        COUNT(DISTINCT accident_id) as Count
+    FROM `test_accident`.`tbl_pedestrian_accident`
+    {where_clause}
+    GROUP BY YearMonth
+    ORDER BY YearMonth
+    """)
+    try:
+        with engine.connect() as conn:
+            df = pd.read_sql(sql, conn, params=params)
         set_cache(cache_key, df.to_dict('records'), ttl=86400)
         return df
     except Exception as e:
@@ -227,7 +255,7 @@ def get_accident_weather_analysis(lat, lon, radius_km=0.5):
             COUNT(*) as 件數,
             SUM(death_count) as 死亡,
             SUM(injury_count) as 受傷
-        FROM `test_accident`.`accident_sq1_main`
+        FROM `test_accident`.`tbl_accident_analysis_final`
         WHERE latitude BETWEEN :min_lat AND :max_lat 
           AND longitude BETWEEN :min_lon AND :max_lon
         GROUP BY weather_condition

@@ -5,74 +5,78 @@ import time
 import random
 import os
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/122.0.0.0 Safari/537.36"
-    ),
-    "Referer": "https://www.google.com/",
-    "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
-}
+def main():
+    HEADERS = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/122.0.0.0 Safari/537.36"
+        ),
+        "Referer": "https://www.google.com/",
+        "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
+    }
 
-def random_delay(min_sec=1, max_sec=3):
-    time.sleep(random.uniform(min_sec, max_sec))
+    def random_delay(min_sec=1, max_sec=3):
+        time.sleep(random.uniform(min_sec, max_sec))
 
-def fetch_with_retry(url, headers, max_retries=3):
-    for attempt in range(max_retries):
-        try:
-            resp = requests.get(url, headers=headers, timeout=10)
-            if resp.status_code == 200:
-                return resp.text
-        except Exception as e:
-            print(f"連線失敗：{e}，重試中...")
-        random_delay(2, 5)
-    raise Exception("多次嘗試後仍無法取得網頁")
+    def fetch_with_retry(url, headers, max_retries=3):
+        for attempt in range(max_retries):
+            try:
+                resp = requests.get(url, headers=headers, timeout=10)
+                if resp.status_code == 200:
+                    return resp.text
+            except Exception as e:
+                print(f"連線失敗：{e}，重試中...")
+            random_delay(2, 5)
+        raise Exception("多次嘗試後仍無法取得網頁")
 
-regions = {
-    "北部": ["臺北市", "新北市", "基隆市", "桃園市", "新竹市", "新竹縣"],
-    "中部": ["臺中市", "彰化縣", "南投縣", "雲林縣", "苗栗縣"],
-    "南部": ["臺南市", "高雄市", "屏東縣", "嘉義市", "嘉義縣"],
-    "東部": ["花蓮縣", "臺東縣", "宜蘭縣"],
-    "離島": ["澎湖縣", "金門縣", "連江縣"]
-}
+    regions = {
+        "北部": ["臺北市", "新北市", "基隆市", "桃園市", "新竹市", "新竹縣"],
+        "中部": ["臺中市", "彰化縣", "南投縣", "雲林縣", "苗栗縣"],
+        "南部": ["臺南市", "高雄市", "屏東縣", "嘉義市", "嘉義縣"],
+        "東部": ["花蓮縣", "臺東縣", "宜蘭縣"],
+        "離島": ["澎湖縣", "金門縣", "連江縣"]
+    }
 
-URL = "https://zh.wikipedia.org/zh-tw/%E8%87%BA%E7%81%A3%E5%A4%9C%E5%B8%82%E5%88%97%E8%A1%A8"
-html = fetch_with_retry(URL, HEADERS)
-soup = BeautifulSoup(html, "html.parser")
+    URL = "https://zh.wikipedia.org/zh-tw/%E8%87%BA%E7%81%A3%E5%A4%9C%E5%B8%82%E5%88%97%E8%A1%A8"
+    html = fetch_with_retry(URL, HEADERS)
+    soup = BeautifulSoup(html, "html.parser")
 
-results = []
+    results = []
 
-for region, cities in regions.items():
-    for city in cities:
-        h3 = soup.find(lambda tag: tag.name == "h3" and city in tag.get_text())
-        if not h3:
-            continue
-        table = h3.find_next("table", class_="wikitable")
-        if not table:
-            continue
-        for row in table.find_all("tr")[1:]:
-            cols = row.find_all("td")
-            if not cols:
+    for region, cities in regions.items():
+        for city in cities:
+            h3 = soup.find(lambda tag: tag.name == "h3" and city in tag.get_text())
+            if not h3:
                 continue
-            night_market = cols[0].get_text(strip=True)
-            if night_market:
-                results.append([region, city, night_market])
-        random_delay(0.5, 1.5)
+            table = h3.find_next("table", class_="wikitable")
+            if not table:
+                continue
+            for row in table.find_all("tr")[1:]:
+                cols = row.find_all("td")
+                if not cols:
+                    continue
+                night_market = cols[0].get_text(strip=True)
+                if night_market:
+                    results.append([region, city, night_market])
+            random_delay(0.5, 1.5)
 
-# -------- 新增：自動建立資料夾並輸出 CSV --------
-output_dir = r".\src\job_nightmarket\Data_raw"
-output_path = os.path.join(output_dir, "night_markets.csv")
+    # -------- 新增：自動建立資料夾並輸出 CSV --------
+    output_dir = r"./src/job_nightmarket/Data_raw"
+    output_path = os.path.join(output_dir, "night_markets.csv")
 
-os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
 
-with open(output_path, "w", newline="", encoding="utf-8-sig") as f:
-    writer = csv.writer(f)
-    writer.writerow(["region", "city", "night_market"])
-    writer.writerows(results)
+    with open(output_path, "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.writer(f)
+        writer.writerow(["region", "city", "night_market"])
+        writer.writerows(results)
 
-print(f"已產生 CSV：{output_path}")
+    print(f"已產生 CSV：{output_path}")
 
+if __name__ == "__main__":
+    main()
+    
 # 【 e_crawler_wiki_market V1.1版 】
 
 # / 程式要點
