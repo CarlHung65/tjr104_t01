@@ -13,7 +13,7 @@ SAVE_NEW_DATA_PATH = os.path.join(SAVE_NEW_DATA_DIR)  # 最終壓縮檔路徑
 load_dotenv()
 user = os.getenv("DB_USER", "root")
 password = os.getenv("DB_PASS")
-host = os.getenv("DB_HOST", "localhost")
+host = os.getenv("DB_HOST", "mysql8")
 port = os.getenv("DB_PORT", "3307")
 dbname = os.getenv("DB_NAME", "car_accident")
 
