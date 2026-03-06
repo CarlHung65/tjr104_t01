@@ -10,6 +10,7 @@ st.set_page_config(layout="wide", page_title="夜市區域事故分析", page_ic
 
 def main():
     df_market = ds.get_all_nightmarkets()
+    traffic_global = ds.get_taiwan_heatmap_data()
     st.session_state['show_accidents'] = True
     st.session_state['show_night_market'] = True
     is_overview, target_market, layers = ui.render_sidebar(df_market)
@@ -58,8 +59,8 @@ def main():
         with c_year: st.info("👈 選擇夜市啟用年份篩選")
         with c_kpi: st.info("👈 選擇夜市後將顯示關鍵數據")
         st.markdown("---")
-        m = ui.build_map(True, None, layers, None, traffic_global, None, df_market)
-        st_folium(m, height=700, use_container_width=True, returned_objects=[])
+        m = ui.build_map(True, None, layers, None, 500, traffic_global, None, df_market)
+        st_folium(m, height=700, width="stretch", returned_objects=[])
         return
 
     # --- 單一夜市模式 ---
@@ -73,7 +74,7 @@ def main():
         c_map_title, c_slider = st.columns([1, 1], vertical_alignment="bottom")
         with c_map_title:
             st.subheader(f"🗺️ {target_market['MarketName']} 事故熱點")
-            radius_m = st.slider("📍 分析範圍 (m)", min_value=500, max_value=5000, step=500, value=1000)
+            radius_m = st.slider("📍 分析範圍 (m)", min_value=500, max_value=3000, step=500, value=1000)
             radius_km = radius_m / 1000.0
 
     # 載入數據
@@ -150,10 +151,27 @@ def main():
     
     # --- 左欄：地圖 ---
     with col_main:
-        # 對地圖進行 1000 筆隨機抽樣，保護瀏覽器效能
-        df_for_map = df_filtered.sample(n=min(1000, len(df_filtered)), random_state=42) if not df_filtered.empty else df_filtered
-        m = ui.build_map(False, target_market, layers, None, None, df_for_map, df_market)
-        st_folium(m, height=500, use_container_width=True, returned_objects=[])
+        # 1. 確保死亡事故優先保留，不隨機抽樣
+        if len(df_filtered) > 1000:
+            df_for_map = df_filtered.sort_values(by=['death_count', 'injury_count'], ascending=False).head(1000)
+        else:
+            df_for_map = df_filtered
+
+        # 2. 根據滑桿半徑動態計算縮放級別
+        if radius_m <= 500:
+            d_zoom = 16
+        elif radius_m <= 1000:
+            d_zoom = 15
+        elif radius_m <= 2000:
+            d_zoom = 14
+        elif radius_m <= 3000:
+            d_zoom = 13
+        else:
+            d_zoom = 12
+
+        # 3. 將 d_zoom 傳入地圖，並將 use_container_width 修正為最新語法 width="stretch"
+        m = ui.build_map(False, target_market, layers, d_zoom, radius_m, None, df_for_map, df_market)
+        st_folium(m, height=500, width="stretch", returned_objects=[])
 
     # --- 中欄：天候風險 ---
     with col_weather:

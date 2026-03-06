@@ -2,20 +2,17 @@ import streamlit as st
 import folium
 from folium.plugins import HeatMap, MarkerCluster
 import pandas as pd
+import altair as alt 
 import time
 from contextlib import contextmanager
 
 # ==========================================
-# 側邊欄
+# 1. 側邊欄 (Sidebar)
 # ==========================================
-def set_layers_state(is_active):
-    keys = ['show_traffic_heat', 'show_night_market', 'show_weather', 'show_accidents']
-    for k in keys:
-        st.session_state[k] = is_active
-
 def render_sidebar(df_market):
     """
-    側邊欄: 區域(北中南) -> 縣市 -> 夜市 的篩選邏輯 (預設為「士林夜市」)
+    繪製側邊欄，改為 區域(北中南) -> 縣市 -> 夜市 的篩選邏輯
+    並設定預設值為「士林夜市」
     """
     st.sidebar.markdown("### 導航選單")
     st.sidebar.page_link("r_app.py", label="首頁", icon="🏠")
@@ -23,15 +20,20 @@ def render_sidebar(df_market):
     st.sidebar.page_link("pages/v_hist_trend.py", label="歷年事故趨勢分析", icon="📈")
     st.sidebar.page_link("pages/v_policy_impact.py", label="交通政策影響分析", icon="⚖️")
     st.sidebar.markdown("---")
+    st.sidebar.page_link("pages/v_tableau.py", label="Tableau車禍數據看板", icon="🖼️") 
+    st.sidebar.markdown("---")
+
     st.sidebar.header("🔍 篩選導航")
 
     layers = {
-        "traffic_heat": st.sidebar.checkbox("🔥 全台車禍熱區", key='show_traffic_heat'),
-        "night_market": st.sidebar.checkbox("🏠 夜市位置", key='show_night_market'),
+        "traffic_heat": st.sidebar.checkbox("🔥 全台車禍熱區", value=True, key='show_traffic_heat'),
+        "night_market": st.sidebar.checkbox("🏠 夜市位置", value=True, key='show_night_market'),
         "weather": st.sidebar.checkbox("🌧️ 降雨熱力", key='show_weather'),
         "accidents": st.sidebar.checkbox("🔵 周邊事故詳情", key='show_accidents')}
 
     return True, None, layers
+
+
 
 @contextmanager
 def page_timer():
@@ -45,15 +47,16 @@ def page_timer():
     # 計算結果僅保留，不進行 UI 輸出
     _ = end_time - start_time
     
-
 # ==========================================
-# 地圖
+# 2. 地圖 (Map)
 # ==========================================
-def build_map(is_overview, target_market, layers, weather_data, traffic_global, df_local, df_market):
+def build_map(is_overview, target_market, layers, dynamic_zoom, radius_m, traffic_global, df_local, df_market):
     if is_overview: 
         loc, zoom = [23.7, 120.95], 8
     elif target_market is not None: 
-        loc, zoom = [target_market['lat'], target_market['lon']], 16
+        loc = [target_market['lat'], target_market['lon']]
+        # 接收 v_dashboard 傳來的動態縮放值，若無則預設 16
+        zoom = dynamic_zoom if dynamic_zoom is not None else 16
     else: 
         loc, zoom = [25.03, 121.56], 12
 
@@ -66,7 +69,7 @@ def build_map(is_overview, target_market, layers, weather_data, traffic_global, 
         fg_m = folium.FeatureGroup(name="夜市")
         if target_market is not None:
             folium.Marker([target_market['lat'], target_market['lon']], icon=folium.Icon(color='purple', icon='star', prefix='fa'), tooltip=target_market['MarketName']).add_to(fg_m)
-            folium.Circle([target_market['lat'], target_market['lon']], radius=500, color='orange', fill=True, fill_opacity=0.1).add_to(fg_m)
+            folium.Circle([target_market['lat'], target_market['lon']], radius=radius_m, color='orange', fill=True, fill_opacity=0.1).add_to(fg_m)
         else:
             for _, r in df_market.iterrows():
                 folium.CircleMarker([r['lat'], r['lon']], radius=3, color='purple', tooltip=r['MarketName']).add_to(fg_m)
