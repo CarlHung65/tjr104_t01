@@ -15,21 +15,22 @@ if '/opt/airflow' not in sys.path:
     sys.path.append('/opt/airflow')
 
 # 2. 在sys.path之後才進行import
+from src.job_weather.OpenMeteo_crawler_weather.tasks.e_crawler_weather_gcp_refactor import e_get_uniq_acc_geo
 from src.job_weather.OpenMeteo_crawler_weather.utils.create_engine_conn_tomysql import get_engine_sqlalchemy, get_conn_pymysql, writer
 from src.job_weather.OpenMeteo_crawler_weather.utils.create_weather_related_tables import create_weather_hist_table
 from src.job_weather.OpenMeteo_crawler_weather.utils.get_table_from_mysql_gcp import get_table_from_sqlserver
 
 
 def t_dataclr_weather_hist(df_weather_raw: pd.DataFrame,
-                           df_view_loc_acc: pd.DataFrame) -> pd.DataFrame:
+                           df_acc_uniq_loc: pd.DataFrame) -> pd.DataFrame:
     """
         Transform: 清理出跟車禍事故日期時間相近的天氣觀測資料、淘汰不相關時間點的冗餘天氣觀測資料。
                 最後生成hash確保 觀測日期時間、經度、緯度 的業務語意唯一性。
 
         :param df_weather_raw: 從OpenMeteo API下載下來的原始整年度天氣觀測資料，為dataframe
         :type df_weather_raw: pd.DataFrame
-        :param df_view_loc_acc: 描述每個車禍地點經緯度進位至小數點後二位的結果之dataframe
-        :type df_view_loc_acc: pd.DataFrame
+        :param df_acc_uniq_loc: 描述每個車禍地點經緯度進位至小數點後二位的結果之dataframe
+        :type df_acc_uniq_loc: pd.DataFrame
         :return: 車禍事故日期時間相近的天氣觀測資料之dataframe，若沒有時間相近的天氣資料，
                  則回傳empty dataframe
         :rtype: DataFrame
@@ -45,9 +46,9 @@ def t_dataclr_weather_hist(df_weather_raw: pd.DataFrame,
         "float64")
 
     # 2. 濾掉跟車禍日與車禍地點不相干的資料列 (此舉在幫助將1億筆壓成150萬筆等級的資料列)
-    df_weather_mrg = df_view_loc_acc.merge(df_weather_raw, how="inner",
+    df_weather_mrg = df_acc_uniq_loc.merge(df_weather_raw, how="inner",
                                            left_on=[
-                                               "approx_accident_datetime", "longitude_round", "latitude_round"],
+                                               "approx_accident_datetime", "lon_round", "lat_round"],
                                            right_on=[
                                                "datetime_ISO8601", "longitude_round", "latitude_round"],
                                            suffixes=["_a", "_w"])
@@ -140,26 +141,16 @@ def l_transform_and_load_to_mysql(target_year: int, *, database: str | None = No
         :rtype: None
     """
 
-    # 1. 讀取車禍view表
-    dql_text = f"""SELECT approx_accident_datetime, longitude_round, latitude_round
-	                    FROM v_acc_approx_loc_{target_year};"""
-    df_view_loc_acc = get_table_from_sqlserver(dql_text, database=database)
+    # 1. 讀取車禍資料主表，並取得進位＋去重後的經緯度組合
+    df_acc_uniq_loc = e_get_uniq_acc_geo(target_year, database=database)
 
-    # 2. 保險起見再對齊一次資料型態
-    df_view_loc_acc["approx_accident_datetime"] = df_view_loc_acc["approx_accident_datetime"].astype(
-        str)
-    df_view_loc_acc["longitude_round"] = df_view_loc_acc["longitude_round"].astype(
-        "float64").round(2)
-    df_view_loc_acc["latitude_round"] = df_view_loc_acc["latitude_round"].astype(
-        "float64").round(2)
-
-    # 3. 準備與MySQL server的連線，用作為底層驅動的pymysql建立conn
+    # 2. 準備與MySQL server的連線，用作為底層驅動的pymysql建立conn
     conn = get_conn_pymysql(database)
 
-    # 4. 用作為底層驅動的pymysql建立conn＆cursor
+    # 3. 用作為底層驅動的pymysql建立conn＆cursor
     cursor = conn.cursor()
 
-    # 5. 找出該年份的所有Parquet之檔案路徑
+    # 4. 找出該年份的所有Parquet之檔案路徑
     gcs_hook = GCSHook(gcp_conn_id='google_cloud_default')  # 初始化
     bucket_name = 'tjr104-01_weather'
     save_dir = f"weather_cache_final/{target_year}"
@@ -171,19 +162,19 @@ def l_transform_and_load_to_mysql(target_year: int, *, database: str | None = No
         print(f"No weather data found for {target_year}")
         return None
 
-    # 6. 先確保表已存在
+    # 5. 先確保表已存在
     this_year = datetime.now().year
-    table_name = "weather_hourly_history_final" if target_year < this_year else "weather_hourly_now"
+    table_name = "weather_hourly_history" if target_year < this_year else "weather_hourly_now"
     create_weather_hist_table(table_name, database=database)
 
-    # 7. 逐一檔案處理，避免記憶體爆炸
+    # 6. 逐一檔案處理，避免記憶體爆炸
     try:
         total_rows = 0
         batch_size = 50
         for i in range(0, len(all_files), batch_size):
             batch_files = all_files[i: i + batch_size]
 
-            # 7-1. 讀取50個檔案後合併在一個大dataframe
+            # 6-1. 讀取50個檔案後合併在一個大dataframe
             df_list = []  # 將讀取的df收在一個清單
             print(f"Downloading Batch No {i // batch_size + 1} from GCS.....")
             for f in batch_files:
@@ -192,38 +183,38 @@ def l_transform_and_load_to_mysql(target_year: int, *, database: str | None = No
                 df_w_chunk = pd.read_parquet(io.BytesIO(file_data))
                 df_list.append(df_w_chunk)
 
-            # 7-2. 清單製備好後一口氣合併
+            # 6-2. 清單製備好後一口氣合併
             print(f"Downloading finished. Starting to clean data.....")
             df_weather_raw = pd.concat(df_list, ignore_index=True)
 
             if df_weather_raw.empty:
                 continue
 
-            # 7-3.合併後開始清洗
+            # 6-3.合併後開始清洗
             df_transformed = t_dataclr_weather_hist(
-                df_weather_raw, df_view_loc_acc)
+                df_weather_raw, df_acc_uniq_loc)
             df_transformed["created_by"] = writer
 
-            # 7-4. 準備寫入資料表的語句
+            # 6-4. 準備寫入資料表的語句
             # 直接用pymysql批量插入(完全避開 pandas 3.0+與airflow3.0/sqlalchemy 2.0的不相容問題)
             columns = ', '.join(df_transformed.columns)
             placeholders = ', '.join(['%s'] * len(df_transformed.columns))
             columns_list = df_transformed.columns.tolist()
 
-            # 7-5. 動態生成UPDATE部分：排除掉 hash_value，剩下的都要更新
+            # 6-5. 動態生成UPDATE部分：排除掉 hash_value，剩下的都要更新
             # 效果如:temperature_degree=VALUES(temperature_degree), rain_mm=VALUES(rain_mm)...
             update_part = ', '.join(
                 [f"{col}=VALUES({col})" for col in columns_list if col != 'hash_value'])
 
-            insert_sql = f"""
+            dml_str = f"""
                             INSERT INTO {table_name} ({columns})
                             VALUES ({placeholders})
                             ON DUPLICATE KEY UPDATE {update_part}
                         """
 
-            # 7-6. 寫入資料表
+            # 6-6. 寫入資料表
             print(f"Inserting into MySQL table....")
-            cursor.executemany(insert_sql, df_transformed.values.tolist())
+            cursor.executemany(dml_str, df_transformed.values.tolist())
             total_rows += len(df_transformed)
             print(
                 f"Batch {i // batch_size + 1} finished: Inserted {len(df_transformed)} rows, Total so far: {total_rows}")
@@ -238,8 +229,8 @@ def l_transform_and_load_to_mysql(target_year: int, *, database: str | None = No
             #                       chunksize=1000  # 每批1000筆，降低網路超時機率
             #                       )
 
-            # 8. 手動釋放該檔案佔用的記憶體
-            del df_weather_raw, df_transformed, df_list
+            # 7. 手動釋放該檔案佔用的記憶體
+            del df_weather_raw, df_transformed, df_list, df_acc_uniq_loc
             import gc
             gc.collect()
     except Exception as e:
