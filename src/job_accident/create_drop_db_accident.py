@@ -36,3 +36,8 @@ def reset_database_environment(base_url, db_name):
 
 # 使用方式：
 # reset_database_environment(GCP_DB_BASE_URL, dbname)
+if __name__ == "__main__":
+    # 這裡直接呼叫函式
+    # 確保你已經從 config 匯入了 GCP_DB_BASE_URL 和 dbname
+    print("⚠️ 警告：即將重置資料庫環境...")
+    reset_database_environment(GCP_DB_BASE_URL, dbname)
