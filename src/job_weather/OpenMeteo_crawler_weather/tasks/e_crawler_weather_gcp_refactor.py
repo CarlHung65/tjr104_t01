@@ -17,7 +17,6 @@ if '/opt/airflow' not in sys.path:
 
 # 2. 在sys.path之後才進行import
 from src.job_weather.OpenMeteo_crawler_weather.utils.get_table_from_mysql_gcp import get_table_from_sqlserver
-from src.job_weather.OpenMeteo_crawler_weather.utils.create_weather_related_tables import create_view_table
 from src.job_weather.OpenMeteo_crawler_weather.utils.request_weather_api import request_weather_api
 
 
@@ -49,9 +48,9 @@ def e_get_uniq_acc_geo(target_year: int, *, database: str | None = None) -> pd.D
                                                             time(accident_datetime)) / 3600
                                                         ) * 3600
                                                 )
-                                  ) as approx_accident_datetime,
-                        accident_datetime as actual_accident_datetime, longitude, latitude,
-                        round(longitude, 2) as longitude_round, round(latitude, 2) as latitude_round
+                                  ) as approx_accident_datetime, 
+                        longitude, 
+                        latitude
                     FROM {table_name}
                         GROUP BY longitude, latitude, accident_id, accident_datetime
                                 having year(accident_datetime) = {target_year};
@@ -60,24 +59,22 @@ def e_get_uniq_acc_geo(target_year: int, *, database: str | None = None) -> pd.D
     # 3. 從MySQL server取得資料表
     df_acc = get_table_from_sqlserver(query, database=database)
 
-    # 4. 同時建立view表，以利未來將accident與weather data兩張表做關聯
-    view_ddl = f"""CREATE OR REPLACE VIEW v_acc_approx_loc_{target_year}
-                        AS {query};
-                """
-    create_view_table(view_ddl, database=database)
-
-    # 5. 經緯度簡化 - 進位
+    # 4. 經緯度簡化 - 進位
     # 在WGS84座標系下，經緯度差0.01度大約相當於緯度方向1110公尺、經度方向約1000公尺。
     # 一般天氣預報模型網格解析度為1~20公里，0.01度差異(約1公里)在同一網格內，對預報影響很小。
     # 所以將經緯度統一進位到小數點後2位，減少送請求次數與後續要處理的資料量。
     df_acc["lat_round"] = df_acc["latitude"].astype("float64").round(2)
     df_acc["lon_round"] = df_acc["longitude"].astype("float64").round(2)
 
-    # 6. 進位後如果有相同經緯度組合重複出現，則去重
+    # 5. 進位後可能發生相同經緯度組合，故保險起見做去重
     df_acc_uniq_loc = df_acc.drop_duplicates(['lat_round', 'lon_round'])
 
-    # 7. 只留'lat_round', 'lon_round'這二欄，避免造成Returned value、x-com過長
+    # 6. 只留'lat_round', 'lon_round'這二欄，避免造成Returned value、x-com過長
     df_acc_uniq_loc = df_acc_uniq_loc.loc[:, ["lat_round", "lon_round"]]
+
+    # 7. 轉換成str，在l_load_to_mysql_gcp再次呼叫這支函式時較穩定。
+    df_acc_uniq_loc["approx_accident_datetime"] = df_acc_uniq_loc["approx_accident_datetime"].astype(
+        str)
     print(
         f"Year {target_year}: Found {len(df_acc_uniq_loc)} unique locations.")
 
