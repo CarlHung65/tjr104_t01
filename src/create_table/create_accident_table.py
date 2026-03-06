@@ -15,7 +15,7 @@ user = os.getenv("DB_USER", "root")
 password = os.getenv("DB_PASS")
 host = os.getenv("DB_HOST", "localhost")
 port = os.getenv("DB_PORT", "3307")
-dbname = os.getenv("DB_NAME", "test_accident")
+dbname = os.getenv("DB_NAME", "car_accident")
 
 DB_URL = "mysql+pymysql://root:nadrew8425@localhost:3306/TJR104_Project"
 GCP_DB_URL = f"mysql+pymysql://{user}:{password}@{host}:{port}/{dbname}"
