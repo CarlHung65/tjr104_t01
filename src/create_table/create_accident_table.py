@@ -18,6 +18,7 @@ port = os.getenv("DB_PORT", "3307")
 dbname = os.getenv("DB_NAME", "car_accident")
 
 DB_URL = "mysql+pymysql://root:nadrew8425@localhost:3306/TJR104_Project"
+GCP_DB_BASE_URL = f"mysql+pymysql://{user}:{password}@{host}:{port}"
 GCP_DB_URL = f"mysql+pymysql://{user}:{password}@{host}:{port}/{dbname}"
 # 模擬真人瀏覽器的標頭，避免被伺服器偵測為機器人而拒絕連線
 HEADERS = {
