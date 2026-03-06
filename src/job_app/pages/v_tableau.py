@@ -1,0 +1,104 @@
+import streamlit as st
+import streamlit.components.v1 as components
+import c_data_service as ds
+import c_ui as ui
+
+st.set_page_config(layout="wide", page_title="Tableau車禍數據看板", page_icon="🖼️")
+
+def act5_render():
+    st.markdown("""
+    <style>
+        .block-container { padding-top: 4rem; }
+        .title-banner {
+            padding: 10px 0px;
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        .title-banner h2 { margin: 0; color: #333333; font-weight: normal; font-size: 26px; }
+        .chart-container {
+            border: 2px solid #000000;
+            border-radius: 12px; 
+            padding: 10px; 
+            background-color: #FFFFFF;
+            margin-bottom: 10px;
+        }
+        
+        /* 修改分頁標籤文字：加粗與稍微放大 */
+        button[data-baseweb="tab"] p {
+            font-weight: bold;
+            font-size: 18px;
+            color: #666666;
+        }
+        
+        /* 滑鼠游標懸停時的顏色變化 */
+        button[data-baseweb="tab"]:hover p {
+            color: #E53935;
+        }
+        
+        /* 選取狀態下的顏色變化與底線顏色 */
+        button[data-baseweb="tab"][aria-selected="true"] p {
+            color: #E53935 !important;
+        }
+        button[data-baseweb="tab"][aria-selected="true"] {
+            border-bottom-color: #E53935 !important;
+        }
+    </style>
+    <div class="title-banner">
+        <h1>Tableau 車禍數據看板</h1>
+    </div>
+    """, unsafe_allow_html=True)
+
+    def get_tableau_html(url_path, static_image):
+        return f"""
+        <div class='chart-container'>
+            <div class='tableauPlaceholder' style='position: relative; width: 100%; height: 850px;'>
+                <object class='tableauViz' style='display:none; width: 100%; height: 100%;'>
+                    <param name='host_url' value='https%3A%2F%2Fpublic.tableau.com%2F' />
+                    <param name='embed_code_version' value='3' />
+                    <param name='path' value='{url_path}' />
+                    <param name='toolbar' value='no' />
+                    <param name='static_image' value='{static_image}' />
+                    <param name='animate_transition' value='yes' />
+                    <param name='display_static_image' value='no' />
+                    <param name='display_spinner' value='yes' />
+                    <param name='display_overlay' value='yes' />
+                    <param name='display_count' value='yes' />
+                    <param name='language' value='zh-TW' />
+                    <param name='filter' value=':original_view=yes' />
+                </object>
+            </div>
+        </div>
+        <script type='text/javascript'>
+            var divElements = document.getElementsByClassName('tableauPlaceholder');
+            var divElement = divElements[divElements.length - 1];
+            var vizElement = divElement.getElementsByTagName('object')[0];
+            vizElement.style.width = '100%';
+            /* 強制設定為 850px 避免高度塌陷擠壓 */
+            vizElement.style.height = '850px';
+            var scriptElement = document.createElement('script');
+            scriptElement.src = 'https://public.tableau.com/javascripts/api/viz_v1.js';
+            vizElement.parentNode.insertBefore(scriptElement, vizElement);
+        </script>
+        """
+
+    tab1, tab2, tab3 = st.tabs(["政策有效嗎 ？", "車禍趨勢", "車禍肇因"])
+
+    with tab1:
+        html1 = get_tableau_html('shared/GJMKXPCDB', 'https://public.tableau.com/static/images/GJ/GJMKXPCDB/1.png')
+        components.html(html1, height=920, scrolling=False)
+
+    with tab2:
+        html2 = get_tableau_html('shared/BTGCD9X4R', 'https://public.tableau.com/static/images/BT/BTGCD9X4R/1.png')
+        components.html(html2, height=920, scrolling=False)
+
+    with tab3:
+        html3 = get_tableau_html('shared/98B8ZZ52R', 'https://public.tableau.com/static/images/98/98B8ZZ52R/1.png')
+        components.html(html3, height=920, scrolling=False)
+
+def main():
+    df_market = ds.get_all_nightmarkets()
+    ui.render_sidebar(df_market)
+    act5_render()
+
+if __name__ == "__main__":
+    main()

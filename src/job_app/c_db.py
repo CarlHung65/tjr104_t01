@@ -10,12 +10,9 @@ pd.set_option('display.width', 1000)
 load_dotenv()
 
 def get_db_engine():
-    user = quote_plus(os.getenv("user"))
-    passwd = quote_plus(os.getenv("passwd"))
-    host = os.getenv("host")
-    port = os.getenv("port")
-    db_name = "test_accident" # 預設連線至 test_accident，查詢時會使用完整的"db"."table"路徑
-    uri = f"mysql+pymysql://{user}:{passwd}@{host}:{port}/{db_name}?charset=utf8mb4"
+    passwd = quote_plus(os.getenv("MYSQL_PASSWORD"))
+    db_name = quote_plus(os.getenv("MYSQL_DATABASE")) # 預設連線至 test_accident，查詢時會使用完整的"db"."table"路徑
+    uri = f"mysql+pymysql://root:{passwd}@localhost:3307/{db_name}?charset=utf8mb4"
     return create_engine(uri, pool_pre_ping=True, pool_recycle=300)
 
 def inspect_table(engine, db_name, table_name):
