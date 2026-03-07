@@ -23,7 +23,10 @@ def get_conn_pymysql(database: str = default_database) -> Connection:
                            password=password,
                            database=database,
                            charset=charset,
-                           autocommit=True
+                           autocommit=True,
+                           connect_timeout=60,      # 連線建立超時
+                           read_timeout=600,        # 讀取超時（適合大查詢）
+                           write_timeout=600,       # 寫入超時
                            )
     return conn
 
