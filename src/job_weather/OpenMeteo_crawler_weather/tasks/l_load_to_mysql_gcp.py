@@ -5,6 +5,7 @@ import sys
 import pandas as pd
 import numpy as np
 from datetime import timedelta, datetime
+import pendulum
 from airflow.sdk import task
 from airflow.models import Variable
 from airflow.exceptions import AirflowException
@@ -15,22 +16,78 @@ if '/opt/airflow' not in sys.path:
     sys.path.append('/opt/airflow')
 
 # 2. 在sys.path之後才進行import
-from src.job_weather.OpenMeteo_crawler_weather.tasks.e_crawler_weather_gcp_refactor import e_get_uniq_acc_geo
 from src.job_weather.OpenMeteo_crawler_weather.utils.create_engine_conn_tomysql import get_engine_sqlalchemy, get_conn_pymysql, writer
 from src.job_weather.OpenMeteo_crawler_weather.utils.create_weather_related_tables import create_weather_hist_table
 from src.job_weather.OpenMeteo_crawler_weather.utils.get_table_from_mysql_gcp import get_table_from_sqlserver
 
 
+def e_get_all_acc_geo(target_year: int, *, database: str | None = None) -> pd.DataFrame:
+    """
+        Extract: 從MySQL server讀取車禍資料主表，並取得進位＋不去重後的經緯度組合
+
+        :param target_year: 要從MySQL資料表查詢哪一年份的車禍資料主表
+        :type target_year: int
+        :param database: 要從MySQL哪一個資料庫查詢target_year車禍資料主表，如不指定，會從預設資料庫查詢
+        :type database: str | None = None
+        :return: 將經緯度都進位至小數點後二位，再去掉重複出現的經緯度組合之後的pandas DataFrame
+        :rtype: DataFrame
+    """
+
+    # 1. 指派要查詢的資料表名稱
+    this_year = pendulum.now().year
+    table_name = "accident_sq1_main" if target_year < this_year else "accident_new_sq1_main"
+
+    # 2. 撰寫DQL語句
+    query = f"""SELECT accident_id,
+                        TIMESTAMP(date(accident_datetime),
+                                    SEC_TO_TIME(ROUND(
+                                                        TIME_TO_SEC(
+                                                            time(accident_datetime)) / 3600
+                                                        ) * 3600
+                                                )
+                                  ) as `approx_accident_datetime`, 
+                        longitude, 
+                        latitude
+                    FROM {table_name}
+                        WHERE YEAR(accident_datetime) = {target_year}
+                        GROUP BY longitude, latitude, accident_id, accident_datetime;
+            """
+
+    # 3. 從MySQL server取得資料表
+    df_acc = get_table_from_sqlserver(query, database=database)
+    print("df_acc欄位名稱：", df_acc.columns)
+
+    # 4. 經緯度簡化 - 進位
+    # 在WGS84座標系下，經緯度差0.01度大約相當於緯度方向1110公尺、經度方向約1000公尺。
+    # 一般天氣預報模型網格解析度為1~20公里，0.01度差異(約1公里)在同一網格內，對預報影響很小。
+    # 所以將經緯度統一進位到小數點後2位，減少送請求次數與後續要處理的資料量。
+    df_acc["lat_round"] = df_acc["latitude"].astype("float64").round(2)
+    df_acc["lon_round"] = df_acc["longitude"].astype("float64").round(2)
+
+    df_acc = df_acc.loc[:, ["accident_id",
+                            "lat_round",
+                            "lon_round",
+                            "approx_accident_datetime"]]
+
+    # 7. 轉換成str，在l_load_to_mysql_gcp再次呼叫這支函式時較穩定。
+    df_acc["approx_accident_datetime"] = df_acc["approx_accident_datetime"].astype(
+        str)
+    print(
+        f"Year {target_year}: Found {len(df_acc)} unique locations.")
+
+    return df_acc
+
+
 def t_dataclr_weather_hist(df_weather_raw: pd.DataFrame,
-                           df_acc_uniq_loc: pd.DataFrame) -> pd.DataFrame:
+                           df_all_acc_loc: pd.DataFrame) -> pd.DataFrame:
     """
         Transform: 清理出跟車禍事故日期時間相近的天氣觀測資料、淘汰不相關時間點的冗餘天氣觀測資料。
                 最後生成hash確保 觀測日期時間、經度、緯度 的業務語意唯一性。
 
         :param df_weather_raw: 從OpenMeteo API下載下來的原始整年度天氣觀測資料，為dataframe
         :type df_weather_raw: pd.DataFrame
-        :param df_acc_uniq_loc: 描述每個車禍地點經緯度進位至小數點後二位的結果之dataframe
-        :type df_acc_uniq_loc: pd.DataFrame
+        :param df_all_acc_loc: 描述每個車禍地點經緯度進位至小數點後二位的結果之dataframe
+        :type df_all_acc_loc: pd.DataFrame
         :return: 車禍事故日期時間相近的天氣觀測資料之dataframe，若沒有時間相近的天氣資料，
                  則回傳empty dataframe
         :rtype: DataFrame
@@ -45,13 +102,29 @@ def t_dataclr_weather_hist(df_weather_raw: pd.DataFrame,
     df_weather_raw["visibility_m"] = df_weather_raw["visibility_m"].astype(
         "float64")
 
+    # 確保兩表的lat_round&lon_round型態一致
+    df_all_acc_loc["longitude_round"] = df_all_acc_loc["longitude_round"].astype(
+        "float64").round(2)
+    df_all_acc_loc["latitude_round"] = df_all_acc_loc["latitude_round"].astype(
+        "float64").round(2)
+    df_weather_raw["lat_round"] = df_weather_raw["latitude_round"].astype(
+        "float64").round(2)
+    df_weather_raw["lon_round"] = df_weather_raw["longitude_round"].astype(
+        "float64").round(2)
+
+    # debug區
+    print(f"df_all_acc_loc is:{df_all_acc_loc.info()}")
+    print(f"df_all_acc_loc is:{df_all_acc_loc.head()}")
+    print(f"df_weather_raw is:{df_weather_raw.info()}")
+    print(f"df_weather_raw is:{df_weather_raw.head()}")
+
     # 2. 濾掉跟車禍日與車禍地點不相干的資料列 (此舉在幫助將1億筆壓成150萬筆等級的資料列)
-    df_weather_mrg = df_acc_uniq_loc.merge(df_weather_raw, how="inner",
-                                           left_on=[
-                                               "approx_accident_datetime", "lon_round", "lat_round"],
-                                           right_on=[
-                                               "datetime_ISO8601", "longitude_round", "latitude_round"],
-                                           suffixes=["_a", "_w"])
+    df_weather_mrg = df_all_acc_loc.merge(df_weather_raw, how="left",
+                                          left_on=[
+                                              "approx_accident_datetime", "lon_round", "lat_round"],
+                                          right_on=[
+                                              "datetime_ISO8601", "longitude_round", "latitude_round"],
+                                          suffixes=["_a", "_w"])
 
     df_weather_mrg = df_weather_mrg.loc[:, ["datetime_ISO8601", "temperature_2m_degree",
                                             "apparent_temperature_degree",
@@ -141,8 +214,8 @@ def l_transform_and_load_to_mysql(target_year: int, *, database: str | None = No
         :rtype: None
     """
 
-    # 1. 讀取車禍資料主表，並取得進位＋去重後的經緯度組合
-    df_acc_uniq_loc = e_get_uniq_acc_geo(target_year, database=database)
+    # 1. 讀取車禍資料主表，並取得進位的經緯度組合
+    df_all_acc_loc = e_get_all_acc_geo(target_year, database=database)
 
     # 2. 準備與MySQL server的連線，用作為底層驅動的pymysql建立conn
     conn = get_conn_pymysql(database)
@@ -192,7 +265,7 @@ def l_transform_and_load_to_mysql(target_year: int, *, database: str | None = No
 
             # 6-3.合併後開始清洗
             df_transformed = t_dataclr_weather_hist(
-                df_weather_raw, df_acc_uniq_loc)
+                df_weather_raw, df_all_acc_loc)
             df_transformed["created_by"] = writer
 
             # 6-4. 準備寫入資料表的語句
@@ -230,7 +303,7 @@ def l_transform_and_load_to_mysql(target_year: int, *, database: str | None = No
             #                       )
 
             # 7. 手動釋放該檔案佔用的記憶體
-            del df_weather_raw, df_transformed, df_list, df_acc_uniq_loc
+            del df_weather_raw, df_transformed, df_list
             import gc
             gc.collect()
     except Exception as e:
