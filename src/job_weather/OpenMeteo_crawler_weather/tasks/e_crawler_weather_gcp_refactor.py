@@ -41,24 +41,15 @@ def e_get_uniq_acc_geo(target_year: int, *, database: str | None = None) -> pd.D
     table_name = "accident_sq1_main" if target_year < this_year else "accident_new_sq1_main"
 
     # 2. 撰寫DQL語句
-    query = f"""SELECT accident_id,
-                        TIMESTAMP(date(accident_datetime),
-                                    SEC_TO_TIME(ROUND(
-                                                        TIME_TO_SEC(
-                                                            time(accident_datetime)) / 3600
-                                                        ) * 3600
-                                                )
-                                  ) as approx_accident_datetime, 
-                        longitude, 
-                        latitude
+    query = f"""SELECT longitude, latitude
                     FROM {table_name}
-                        GROUP BY longitude, latitude, accident_id, accident_datetime
-                                having year(accident_datetime) = {target_year};
+                        WHERE YEAR(accident_datetime) = {target_year}
+                            GROUP BY longitude, latitude;
             """
 
     # 3. 從MySQL server取得資料表
     df_acc = get_table_from_sqlserver(query, database=database)
-
+    print("df_acc欄位名稱：", df_acc.columns)  # debug區
     # 4. 經緯度簡化 - 進位
     # 在WGS84座標系下，經緯度差0.01度大約相當於緯度方向1110公尺、經度方向約1000公尺。
     # 一般天氣預報模型網格解析度為1~20公里，0.01度差異(約1公里)在同一網格內，對預報影響很小。
@@ -72,13 +63,9 @@ def e_get_uniq_acc_geo(target_year: int, *, database: str | None = None) -> pd.D
     # 6. 只留'lat_round', 'lon_round'這二欄，避免造成Returned value、x-com過長
     df_acc_uniq_loc = df_acc_uniq_loc.loc[:, ["lat_round", "lon_round"]]
 
-    # 7. 轉換成str，在l_load_to_mysql_gcp再次呼叫這支函式時較穩定。
-    df_acc_uniq_loc["approx_accident_datetime"] = df_acc_uniq_loc["approx_accident_datetime"].astype(
-        str)
     print(
         f"Year {target_year}: Found {len(df_acc_uniq_loc)} unique locations.")
 
-    # a df with [lat_round, lon_round]
     return df_acc_uniq_loc
 
 
@@ -104,7 +91,7 @@ def prep_batch_plan(df_acc_unique_loc: pd.DataFrame, target_year: int,
     """
 
     # 1. 組合出一個Series，描述各資料列對應的檔案名稱，並增加為新的一欄
-    df_acc_uniq_loc = df_acc_unique_loc.copy()
+    df_acc_uniq_loc = df_acc_unique_loc.loc[:, ["lat_round", "lon_round"]]
     df_acc_uniq_loc["file_name"] = (
         df_acc_uniq_loc["lat_round"].astype(str).str.replace(".", "-", regex=False) + "_" +
         df_acc_uniq_loc["lon_round"].astype(str).str.replace(".", "-", regex=False) +
@@ -133,8 +120,21 @@ def prep_batch_plan(df_acc_unique_loc: pd.DataFrame, target_year: int,
 
     for i in range(0, len(df_needed), batch_size):
         df_a_batch = df_needed.iloc[i: i + batch_size]
-        # 之前這裡用dict描述df_a_batch，會導致return value(=batch_plan的值)過長，所以這裡改成用dataframe物件
-        batch_plan.append(df_a_batch)
+        df_a_batch["batch_id"] = i
+
+        # 最穩定的 (io.BytesIO + engine='pyarrow')可以避開 pandas內部讀寫GCS可能產生的版本衝突
+        buffer = io.BytesIO()
+        df_a_batch.to_parquet(
+            buffer, index=False, engine='pyarrow')
+        buffer.seek(0)
+        gcs_hook.upload(
+            bucket_name=bucket_name,
+            object_name=f"{save_dir}/tmp/batch_from_row_no_{i}.parquet",
+            data=buffer.getvalue(),  # parquet資料透過data傳入，預設會覆蓋同名檔案
+            mime_type='application/octet-stream')
+
+        batch_plan.append(i)
+        # batch_plan.append(df_a_batch)
 
     print(f"資料夾已存有{len(existing_files)}個地點對應的檔案，故尚須處理{len(df_needed)}個地點。")
     print(f"總結切分出{len(batch_plan)}份批數，分批請求API")
@@ -158,10 +158,10 @@ def prep_batch_plan(df_acc_unique_loc: pd.DataFrame, target_year: int,
     execution_timeout=timedelta(hours=2),
     do_xcom_push=False  # 回傳的xcom不推送到下一個task，省掉存xcom的記憶體空間
 )
-def e_crawler_weatherapi(df_one_batch: pd.DataFrame,
+def e_crawler_weatherapi(batch_no: int,
                          target_year: int) -> str | None:
     """
-        Extract: 遍歷引入的df_one_batch中的經緯度資料，向OpenMeteo historical weather API
+        Extract: 遍歷引入的batch_no找到開啟對應的df_one_batch中的經緯度資料，向OpenMeteo historical weather API
         請求該地點的某個整年度天氣觀測資料。
 
         :param df_one_batch: 包含經度與緯度的dataframe
@@ -176,6 +176,15 @@ def e_crawler_weatherapi(df_one_batch: pd.DataFrame,
     gcs_hook = GCSHook(gcp_conn_id='google_cloud_default')  # 初始化
     bucket_name = 'tjr104-01_weather'
     save_dir = f"weather_cache_final/{target_year}"
+
+    # 從開啟df_one_batch
+    file_data = gcs_hook.download(bucket_name=bucket_name,
+                                  object_name=f"{save_dir}/tmp/batch_from_row_no_{batch_no}.parquet")
+    df_one_batch = pd.read_parquet(io.BytesIO(file_data))
+    df_one_batch["lat_round"] = df_one_batch["lat_round"].astype(
+        "float64").round(2)
+    df_one_batch["lon_round"] = df_one_batch["lon_round"].astype(
+        "float64").round(2)
 
     # 2. 遍歷df_one_batch，把經緯度的值分別組合出一個字串
     lat_round_lst = [str(lat_num) for lat_num in df_one_batch["lat_round"]]
