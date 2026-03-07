@@ -104,65 +104,63 @@ def auto_scrape_recent_data()->list:
 
     for r1r2 in recentA1A2:
         soup = BeautifulSoup(r1r2.text, 'html.parser')
-        csv_link_tag = soup.find('a', title=re.compile("下載檔案"))
+        csv_link_tag = soup.find_all('a', title=re.compile("下載檔案"))
        
-        if not csv_link_tag:
-            print(f"錯誤：第 {count} 個頁面找不到下載標籤！")
-            count += 1
-            continue # 找不到就換下一個，不要直接 return False
-
-        FILE_URL = csv_link_tag.get('href')
-       
-        print(f"成功鎖定檔案位址: {FILE_URL}")
+        # 2. 遍歷所有的下載標籤
+        for tag in csv_link_tag:
+            if not tag:
+                count += 1
+                continue # 找不到就換下一個，不要直接 return False
+            FILE_URL = tag.get('href')
+            print(f"成功鎖定檔案位址: {FILE_URL}")
     
-        try:
-            with requests.get(FILE_URL, headers=HEADERS, stream=True, timeout=60, verify=False) as r:
-                r.raise_for_status()
+            try:
+                with requests.get(FILE_URL, headers=HEADERS, stream=True, timeout=60, verify=False) as r:
+                    r.raise_for_status()
 
-                tag_title = csv_link_tag.get('title', '')
-                if "ZIP" in tag_title:
-                    file_name = f"recent_A{count}.zip"
-                elif "CSV" in tag_title:
-                    file_name = f"recent_A{count}.csv"
+                    tag_title = csv_link_tag.get('title', '')
+                    if "ZIP" in tag_title:
+                        file_name = f"recent_{count}.zip"
+                    elif "CSV" in tag_title:
+                        file_name = f"recent_{count}.csv"
 
-                final_save_path = os.path.join(SAVE_NEW_DATA_DIR, file_name)
+                    final_save_path = os.path.join(SAVE_NEW_DATA_DIR, file_name)
 
-                print(f"正在下載至: {final_save_path}")
-
-
-                with open(final_save_path, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=1024*1024):
-                        #每次從網路接收 1MB 的數據就立刻寫入硬碟，然後再接下一個 1MB。
-                        if chunk:
-                            f.write(chunk)
-
-                if ".zip" in file_name:
-                    with zipfile.ZipFile(final_save_path, 'r') as z:
-                        for info in z.infolist():
-                        # 處理檔名亂碼 (cp437 -> cp950)
-                            try:
-                                real_name = info.filename.encode('cp437').decode('cp950')
-                            except:
-                                real_name = info.filename
-            
-                    # 只抓 A1、A2 的 CSV
-                        if ("A1" in real_name or "A2" in real_name) and real_name.endswith('.csv'):
-                            with z.open(info.filename) as f:
-                        # 讀取並存入 list 中
-                                df = pd.read_csv(f, encoding='utf-8-sig')
-                        print(f"已讀取檔案: {real_name}")
-                elif ".csv" in file_name: 
-                    df = pd.read_csv(final_save_path,encoding='utf-8-sig')
+                    print(f"正在下載至: {final_save_path}")
 
 
-                #print(df.head())
-                A1A2_List.append(df)
-                print(f"【下載成功】檔案存於: {final_save_path}")
-                count += 1 # 檔名序號加一
-     
+                    with open(final_save_path, 'wb') as f:
+                        for chunk in r.iter_content(chunk_size=1024*1024):
+                            #每次從網路接收 1MB 的數據就立刻寫入硬碟，然後再接下一個 1MB。
+                            if chunk:
+                                f.write(chunk)
 
-        except Exception as e:
-            print(f"下載失敗: {e}")
+                    if ".zip" in file_name:
+                        with zipfile.ZipFile(final_save_path, 'r') as z:
+                            for info in z.infolist():
+                            # 處理檔名亂碼 (cp437 -> cp950)
+                                try:
+                                    real_name = info.filename.encode('cp437').decode('cp950')
+                                except:
+                                    real_name = info.filename
+                
+                        # 只抓 A1、A2 的 CSV
+                            if ("A1" in real_name or "A2" in real_name) and real_name.endswith('.csv'):
+                                with z.open(info.filename) as f:
+                            # 讀取並存入 list 中
+                                    df = pd.read_csv(f, encoding='utf-8-sig')
+                            print(f"已讀取檔案: {real_name}")
+                    elif ".csv" in file_name: 
+                        df = pd.read_csv(final_save_path,encoding='utf-8-sig')
+
+
+                    #print(df.head())
+                    A1A2_List.append(df)
+                    print(f"【下載成功】檔案存於: {final_save_path}")
+                    count += 1 # 檔名序號加一
+
+            except Exception as e:
+                print(f"下載失敗: {e}")
             
     return A1A2_List
 
