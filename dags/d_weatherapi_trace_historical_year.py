@@ -9,7 +9,7 @@ if '/opt/airflow' not in sys.path:
 # 2. 在sys.path之後才進行import
 from src.job_weather.OpenMeteo_crawler_weather.tasks.e_crawler_weather_gcp_refactor import e_get_uniq_acc_geo, prep_batch_plan, e_crawler_weatherapi
 from src.job_weather.OpenMeteo_crawler_weather.tasks.l_load_to_mysql_gcp import l_transform_and_load_to_mysql, l_summary_report
-from job_weather.OpenMeteo_crawler_weather.tasks.l_load_to_bridge_table import l_load_to_bridge_table
+from src.job_weather.OpenMeteo_crawler_weather.tasks.l_load_to_bridge_table import l_load_to_bridge_table
 
 # Default arguments for the DAG
 default_args = {
@@ -41,7 +41,7 @@ def accident_weather_pipeline():
             batches = prep_batch_plan(df, year, batch_size=50)
             # MappedOperator
             craw_done = e_crawler_weatherapi.partial(
-                target_year=year).expand(df_one_batch=batches)
+                target_year=year).expand(batch_no=batches)
 
             report_done = l_summary_report(target_year=year,
                                            upstream=craw_done)
