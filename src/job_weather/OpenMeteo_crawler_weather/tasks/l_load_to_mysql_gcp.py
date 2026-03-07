@@ -99,6 +99,11 @@ def t_dataclr_weather_hist(df_weather_raw: pd.DataFrame,
     # print(f"df_weather_raw is:{df_weather_raw.info()}")
     # print(f"df_weather_raw is:{df_weather_raw.head()}")
 
+    # 先做檢查再處理。
+    if "datetime_ISO8601" not in df_weather_raw.columns:
+        print("錯誤：輸入的 DataFrame 缺少 datetime_ISO8601 欄位")
+        return pd.DataFrame()  # 回傳空表，讓下游不會噴掉
+
     # 1. 清理df_weather_raw
     # 清理日期，統一成YYYY-mm-dd HH:MM:SS的格式並先維持字串
     df_weather_raw["datetime_ISO8601"] = df_weather_raw["datetime_ISO8601"].astype(
@@ -193,7 +198,7 @@ def l_summary_report(target_year: int, upstream) -> str:
     # 1. 找出該年份的所有Parquet之檔案路徑
     gcs_hook = GCSHook(gcp_conn_id='google_cloud_default')  # 初始化
     bucket_name = 'tjr104-01_weather'
-    save_dir = f"weather_cache_final/{target_year}"
+    save_dir = f"weather_cache_final/{target_year}/data"
     all_files = gcs_hook.list(bucket_name=bucket_name,
                               prefix=save_dir)
     all_files = [f for f in all_files if f.endswith(".parquet")]
@@ -235,7 +240,7 @@ def l_transform_and_load_to_mysql(target_year: int, *, database: str | None = No
     # 4. 找出該年份的所有Parquet之檔案路徑
     gcs_hook = GCSHook(gcp_conn_id='google_cloud_default')  # 初始化
     bucket_name = 'tjr104-01_weather'
-    save_dir = f"weather_cache_final/{target_year}"
+    save_dir = f"weather_cache_final/{target_year}/data"
     all_files = gcs_hook.list(bucket_name=bucket_name,
                               prefix=save_dir)
     all_files = [f for f in all_files if f.endswith(".parquet")]
@@ -258,19 +263,24 @@ def l_transform_and_load_to_mysql(target_year: int, *, database: str | None = No
 
             # 6-1. 讀取50個檔案後合併在一個大dataframe
             df_list = []  # 將讀取的df收在一個清單
-            print(f"Downloading Batch No {i // batch_size + 1} from GCS.....")
+            print(f"Downloading Batch No {i // batch_size} from GCS.....")
             for f in batch_files:
                 file_data = gcs_hook.download(
                     bucket_name=bucket_name, object_name=f)
                 df_w_chunk = pd.read_parquet(io.BytesIO(file_data))
+
+                # 檢查必要欄位，如果不符合就跳過這個檔案，不參與合併
+                if "datetime_ISO8601" not in df_w_chunk.columns:
+                    print(f"警告：檔案 {f} 格式錯誤（缺少 datetime_ISO8601），已跳過。")
+                    continue
+
                 df_list.append(df_w_chunk)
 
             # 6-2. 清單製備好後一口氣合併
             print(f"Downloading finished. Starting to clean data.....")
-            df_weather_raw = pd.concat(df_list, ignore_index=True)
-
-            if df_weather_raw.empty:
+            if not df_list:
                 continue
+            df_weather_raw = pd.concat(df_list, ignore_index=True)
 
             # 6-3.合併後開始清洗
             df_transformed = t_dataclr_weather_hist(df_weather_raw,
@@ -297,16 +307,19 @@ def l_transform_and_load_to_mysql(target_year: int, *, database: str | None = No
             # 6-6. 寫入資料表
             print(f"Inserting into MySQL table....")
             cursor.executemany(dml_str, df_transformed.values.tolist())
+            conn.commit()
             total_rows += len(df_transformed)
             print(
-                f"Batch {i // batch_size + 1} finished: Inserted {len(df_transformed)} rows, Total so far: {total_rows}")
+                f"Batch {i // batch_size} finished: Inserted {len(df_transformed)} rows, Total so far: {total_rows}")
 
             # 7. 手動釋放該檔案佔用的記憶體
             del df_weather_raw, df_transformed, df_list
             import gc
             gc.collect()
     except Exception as e:
-        print(f"Error on Batch No {i // batch_size + 1}, Error msg: {e}")
+        print(f"Error on Batch No {i // batch_size}, Error msg: {e}")
+        print(f"Error on {batch_files}")
+        conn.rollback()
     else:
         print(f"Successfully loaded {target_year} data to GCP MySQL.")
         return f"{target_year}_load_done"
