@@ -9,6 +9,7 @@ if '/opt/airflow' not in sys.path:
 # 2. 在sys.path之後才進行import
 from src.job_weather.OpenMeteo_crawler_weather.tasks.e_crawler_weather_gcp_refactor import e_get_uniq_acc_geo, prep_batch_plan, e_crawler_weatherapi
 from src.job_weather.OpenMeteo_crawler_weather.tasks.l_load_to_mysql_gcp import l_transform_and_load_to_mysql, l_summary_report
+from src.job_weather.OpenMeteo_crawler_weather.tasks.l_load_to_bridge_table import l_load_to_bridge_table
 
 # Default arguments for the DAG
 default_args = {
@@ -34,17 +35,20 @@ def accident_weather_pipeline():
 
     with TaskGroup(group_id=f"year_{this_year}") as year_group:
         df = e_get_uniq_acc_geo(this_year,
-                                database="tjr104_t01")
+                                database="car_accident")
         batches = prep_batch_plan(df, this_year, batch_size=50)
         # MappedOperator
         craw_done = e_crawler_weatherapi.partial(
-            target_year=this_year).expand(df_one_batch=batches)
+            target_year=this_year).expand(batch_no=batches)
 
         report_done = l_summary_report(target_year=this_year,
                                        upstream=craw_done)
         load_done = l_transform_and_load_to_mysql(target_year=this_year,
-                                                  database="tjr104_t01",
+                                                  database="car_accident",
                                                   upstream=report_done)
+        l_load_to_bridge_table(target_year=this_year,
+                               database="car_accident",
+                               upstream=load_done)
 
 
 # Instantiate the DAG
