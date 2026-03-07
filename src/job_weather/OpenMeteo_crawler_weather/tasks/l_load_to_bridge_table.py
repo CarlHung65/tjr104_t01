@@ -52,17 +52,20 @@ def l_load_to_bridge_table(target_year: int, *, database: str | None = None,
                                         FROM {a_table_name}
                                         WHERE YEAR(accident_datetime) = {target_year}
                                     ) a_tmp
-                                LEFT JOIN {w_table_name} w ON 
+                                INNER JOIN {w_table_name} w ON 
                                     w.observation_datetime = a_tmp.approx_accident_datetime AND 
                                     w.longitude_round = a_tmp.longitude_round AND
                                     w.latitude_round = a_tmp.latitude_round
+                                ON DUPLICATE KEY UPDATE 
+                                observation_datetime = VALUES(observation_datetime)
                             ;"""
         cursor.execute(dml_str)
+        conn.commit()
     except Exception as e:
         print(f"Error on inserting into bridging table, Error msg: {e}")
+        conn.rollback()
     else:
         print(f"Successfully inserting into bridging table")
-        conn.commit()
     finally:
         cursor.close()
         conn.close()
