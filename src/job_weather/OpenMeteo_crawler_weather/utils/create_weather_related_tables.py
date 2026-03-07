@@ -42,6 +42,7 @@ def create_weather_hist_table(table_name: str, *, database: str | None = None) -
                                 `hash_value` CHAR(32) NOT NULL,
                                 PRIMARY KEY (`weather_record_id`),
                                 UNIQUE KEY UK_WHH_hash (`hash_value`),
+                                INDEX idx_{table_name}_obt(`observation_datetime`),
                                 INDEX idx_{table_name}_long(`longitude_round`),
                                 INDEX idx_{table_name}_lat(`latitude_round`))
                                 CHARSET=utf8mb4 COMMENT '各地天氣觀測結果';""")
@@ -63,17 +64,19 @@ def create_bridge_table(w_table_name: str, a_table_name: str,
         engine = get_engine_sqlalchemy()
 
     with engine.connect() as conn:
-        ddl_str = f"""CREATE TABLE IF NOT EXISTS {bridge_table_name} (
+        ddl_str = text(f"""CREATE TABLE IF NOT EXISTS {bridge_table_name} (
                         accident_id varchar(16),
-                        weather_record_id BIGINT AUTO_INCREMENT,
+                        weather_record_id BIGINT,
                         observation_datetime DATETIME,
                         longitude_round DECIMAL(10, 2),
                         latitude_round DECIMAL(10, 2),
                         PRIMARY KEY (accident_id, weather_record_id),
                         FOREIGN KEY (accident_id) REFERENCES {a_table_name}(accident_id),
-                        FOREIGN KEY (weather_record_id) REFERENCES {w_table_name}(weather_record_id)
-                        );
-                    """
-        conn.execute(text(str(ddl_str)))
+                        FOREIGN KEY (weather_record_id) REFERENCES {w_table_name}(weather_record_id),
+                        INDEX idx_{bridge_table_name}_lon(`longitude_round`),
+                        INDEX idx_{bridge_table_name}_lat(`latitude_round`))
+                        CHARSET=utf8mb4 COMMENT '天氣車禍橋接表';""")
+
+        conn.execute(ddl_str)
         print(f"建立{bridge_table_name}表成功!")
     return None
