@@ -40,7 +40,7 @@ def create_weather_hist_table(table_name: str, *, database: str | None = None) -
                                 `created_on` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '建立日期',
                                 `created_by` VARCHAR(50) NOT NULL COMMENT '建立者',
                                 `hash_value` CHAR(32) NOT NULL,
-                                PRIMARY KEY (`id`),
+                                PRIMARY KEY (`weather_record_id`),
                                 UNIQUE KEY UK_WHH_hash (`hash_value`),
                                 INDEX idx_{table_name}_long(`longitude_round`),
                                 INDEX idx_{table_name}_lat(`latitude_round`))
@@ -64,8 +64,8 @@ def create_bridge_table(w_table_name: str, a_table_name: str,
 
     with engine.connect() as conn:
         ddl_str = f"""CREATE TABLE IF NOT EXISTS {bridge_table_name} (
-                        accident_id INT NOT NULL,
-                        weather_record_id INT NOT NULL,
+                        accident_id varchar(16),
+                        weather_record_id BIGINT AUTO_INCREMENT,
                         longitude_round DECIMAL(10, 2),
                         latitude_round DECIMAL(10, 2),
                         observation_datetime DATETIME,
@@ -73,9 +73,6 @@ def create_bridge_table(w_table_name: str, a_table_name: str,
                         FOREIGN KEY (accident_id) REFERENCES {a_table_name}(accident_id),
                         FOREIGN KEY (weather_record_id) REFERENCES {w_table_name}(weather_record_id)
                         );
-
-                    CREATE INDEX idx_bridge_aID ON accident_weather_bridge(accident_id);
-                    CREATE INDEX idx_bridge_wID ON accident_weather_bridge(weather_record_id);
                     """
         conn.execute(text(str(ddl_str)))
         print(f"建立{bridge_table_name}表成功!")
