@@ -66,9 +66,9 @@ def create_bridge_table(w_table_name: str, a_table_name: str,
         ddl_str = f"""CREATE TABLE IF NOT EXISTS {bridge_table_name} (
                         accident_id varchar(16),
                         weather_record_id BIGINT AUTO_INCREMENT,
+                        observation_datetime DATETIME,
                         longitude_round DECIMAL(10, 2),
                         latitude_round DECIMAL(10, 2),
-                        observation_datetime DATETIME,
                         PRIMARY KEY (accident_id, weather_record_id),
                         FOREIGN KEY (accident_id) REFERENCES {a_table_name}(accident_id),
                         FOREIGN KEY (weather_record_id) REFERENCES {w_table_name}(weather_record_id)
