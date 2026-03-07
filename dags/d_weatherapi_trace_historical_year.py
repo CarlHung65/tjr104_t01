@@ -48,7 +48,7 @@ def accident_weather_pipeline():
             load_done = l_transform_and_load_to_mysql(target_year=year,
                                                       database="car_accident",
                                                       upstream=report_done)
-            l_load_to_bridge_table(target_years,
+            l_load_to_bridge_table(year,
                                    database="car_accident",
                                    upstream=load_done)
 
