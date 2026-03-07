@@ -33,7 +33,7 @@ def l_load_to_bridge_table(target_year: int, *, database: str | None = None,
     try:
         # 3. 用作為底層驅動的pymysql建立conn＆cursor
         cursor = conn.cursor()
-        dml_str = f"""INSERT INTO accident_weather_bridge 
+        dml_str = f"""INSERT INTO {bridge_table_name} 
                             (accident_id, weather_record_id, 
                                 observation_datetime, longitude_round, latitude_round)
                             SELECT a_tmp.accident_id, w.weather_record_id, 
@@ -50,8 +50,9 @@ def l_load_to_bridge_table(target_year: int, *, database: str | None = None,
                                             round(longitude, 2) as `longitude_round`,
                                             round(latitude, 2) as `latitude_round`    
                                         FROM {a_table_name}
+                                        WHERE YEAR(accident_datetime) = {target_year}
                                     ) a_tmp
-                                JOIN {w_table_name} w ON 
+                                LEFT JOIN {w_table_name} w ON 
                                     w.observation_datetime = a_tmp.approx_accident_datetime AND 
                                     w.longitude_round = a_tmp.longitude_round AND
                                     w.latitude_round = a_tmp.latitude_round
