@@ -38,6 +38,12 @@ def check_ollama():
 
 def act6_render(page):
 
+<<<<<<< HEAD
+=======
+    if st.session_state.page != "AI 小幫手":
+        return
+
+>>>>>>> Tom
     if "ai_step" not in st.session_state:
         st.session_state["ai_step"] = 1
 

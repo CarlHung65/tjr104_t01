@@ -4,6 +4,12 @@ import streamlit.components.v1 as components
 def act5_render():
     st.title("車禍數據看板")
 
+<<<<<<< HEAD
+=======
+    if st.session_state.page != "政策來檢驗":
+        return
+
+>>>>>>> Tom
     st.markdown("""
 <hr style="
     border: 0;
