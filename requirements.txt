@@ -1,28 +1,33 @@
-# --- 核心修正 (避開 MappedAnnotationError) ---
-apache-airflow==3.0.6
-sqlalchemy>=1.4.0,<2.0.0
+# --- Airflow 核心 (針對 3.1.7 與 Python 3.13 最佳化) ---
+apache-airflow==3.1.7
+sqlalchemy>=2.0.30,<3.0.0
+# Pendulum 3.0+ 才能支援 Python 3.12/3.13 的底層時間處理
 pendulum>=3.0.0,<4.0.0
 
-# --- 資料庫驅動 ---
-mysqlclient>=2.2.4
-pymysql>=1.1.0
-redis>=7.1.0
+# --- 資料庫驅動 (確保編譯版本支援 Python 3.13) ---
+# mysqlclient 2.2.6+ 開始正式支援 Python 3.13
+mysqlclient>=2.2.6
+pymysql>=1.1.1
+redis>=5.0.0
 
 # --- 交通數據處理專案必備 ---
+# Pandas 2.2.3+ 支援 Python 3.13
 pandas>=2.2.3
-numpy>=1.26,<2.0
-pyarrow>=15.0.0
-folium>=0.15.0
+# Numpy 2.1+ 對 Python 3.13 支援較佳，但若有相容性考量可選 2.0
+numpy>=2.1.0
+pyarrow>=17.0.0
+folium>=0.17.0
 googlemaps>=4.10.0
 
 # --- 爬蟲與自動化 ---
-beautifulsoup4>=4.12.0
-requests>=2.31.0
-selenium>=4.20.0
-webdriver-manager>=4.0.0
+beautifulsoup4>=4.12.3
+requests>=2.32.0
+# Selenium 4.25+ 完整支援 Python 3.13
+selenium>=4.25.0
+webdriver-manager>=4.0.2
 
 # --- 環境與 UI ---
-python-dotenv>=1.0.0
-streamlit>=1.30.0
-google-cloud-storage>=2.14.0
-graphviz>=0.20.0
+python-dotenv>=1.0.1
+streamlit>=1.38.0
+google-cloud-storage>=2.18.0
+graphviz>=0.20.3

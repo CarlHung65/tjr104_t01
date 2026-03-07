@@ -4,7 +4,6 @@ import c_data_service as ds
 import c_ui as ui
 import time
 
-
 # 1. 頁面設定
 st.set_page_config(
     layout="wide", 
@@ -23,7 +22,7 @@ def main():
         <div class="splash-container">
             <img src="https://media.giphy.com/media/l0HlOaQcLJ2hHpYcw/giphy.gif" width="150" style="border-radius: 10px;">
             <h2 class="loading-text">🚦 正在分析全台路況數據...</h2>
-            <p class="sub-text">整合 <b>150萬筆</b> 交通事故資料 x <b>300+</b> 夜市圖資</p>
+            <p class="sub-text">整合 <b>150 萬筆</b> 交通事故資料 x <b>300+</b> 夜市圖資</p>
             <div style="width: 300px; height: 4px; background: #eee; margin-top: 15px; border-radius: 2px;">
                 <div style="width: 100%; height: 100%; background: #ff4b4b; animation: loading 2s infinite;"></div>
             </div>
@@ -101,11 +100,13 @@ def main():
         m = ui.build_map(
             is_overview = True,
             target_market = None,
-            layers = home_layers,
-            weather_data = None,
+            layers = layers,
+            dynamic_zoom = None,  
+            radius_m = 500,       # 半徑參數
             traffic_global = traffic_global,
             df_local = None,
-            df_market = df_market)
+            df_market = df_market
+        )
 
         # 顯示地圖
         st_folium(m, height=800, use_container_width=True, returned_objects=[])

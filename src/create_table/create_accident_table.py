@@ -13,11 +13,12 @@ SAVE_NEW_DATA_PATH = os.path.join(SAVE_NEW_DATA_DIR)  # 最終壓縮檔路徑
 load_dotenv()
 user = os.getenv("DB_USER", "root")
 password = os.getenv("DB_PASS")
-host = os.getenv("DB_HOST", "localhost")
+host = os.getenv("DB_HOST", "mysql8")
 port = os.getenv("DB_PORT", "3307")
-dbname = os.getenv("DB_NAME", "test_accident")
+dbname = os.getenv("DB_NAME", "car_accident")
 
 DB_URL = "mysql+pymysql://root:nadrew8425@localhost:3306/TJR104_Project"
+GCP_DB_BASE_URL = f"mysql+pymysql://{user}:{password}@{host}:{port}"
 GCP_DB_URL = f"mysql+pymysql://{user}:{password}@{host}:{port}/{dbname}"
 # 模擬真人瀏覽器的標頭，避免被伺服器偵測為機器人而拒絕連線
 HEADERS = {
@@ -106,8 +107,9 @@ ENVIRONMENT_TABLE_DICT={'accident_id':types.VARCHAR(16),'light_condition':types.
                   'lane_edge_marking':types.BOOLEAN}
 
 HUMAN_BEAHAVIOR_DICT = {'accident_id': types.VARCHAR(16),'gender':types.VARCHAR(20),
-                       'age':types.SMALLINT,'protective_equipment':types.VARCHAR(50),
-                       'mobile_device_usage':types.VARCHAR(20),'party_action_major':types.VARCHAR(20),
+                       'age':types.SMALLINT,'party_sequence':types.INTEGER,
+                       'protective_equipment':types.VARCHAR(50),'mobile_device_usage':types.VARCHAR(20),
+                       'party_action_major':types.VARCHAR(20),
                        'party_action_minor':types.VARCHAR(20)}
 
 EVENT_PROCESS_PARTICIPATE_OBJECT_DICT1= {'accident_id': types.VARCHAR(16),'accident_type_major':types.VARCHAR(20),
