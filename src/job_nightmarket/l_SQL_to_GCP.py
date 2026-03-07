@@ -5,11 +5,11 @@ from dotenv import load_dotenv
 
 # 讀取環境變數
 load_dotenv()
-username = os.getenv("GCP_username")
-password = os.getenv("GCP_password")
+username = "root"
+password = os.getenv("MYSQL_ROOT_PASSWORD")
 server   = "mysql8"
 port     = 3306
-database = "night_market"
+database = "car_accident"
 
 # 建立資料庫連線
 conn_str = f"mysql+pymysql://{username}:{password}@{server}:{port}/{database}?charset=utf8mb4"
@@ -58,7 +58,6 @@ def create_schema():
 def main():
     try:
         df = load_csv()
-        create_schema()
 
         # 清空目標表格 Night_market_merge
         with engine.connect() as conn:
