@@ -37,25 +37,25 @@ default_args = {
 }
 
 with DAG(
-    dag_id='accident_gcp_pipeline_v2',
+    dag_id='accident_historical_init',
     default_args=default_args,
     schedule=None,
     catchup=False,
-    tags=['accident', 'split_tasks']
+    tags=['initialization']
 ) as dag:
 
     @task
     def check_initialization():
-        """任務 1: 檢查資料庫是否已初始化"""
+        """檢查資料庫是否已初始化"""
         engine = create_engine(GCP_DB_URL)
         ready = is_db_ready(engine)
         return ready
 
     @task
     def process_historical_files(db_is_ready: bool):
-        """任務 2: 處理歷年資料 (原本的 for 迴圈)"""
+        """處理歷年資料 (原本的 for 迴圈)"""
         if db_is_ready:
-            print("✅ 資料庫已初始化，跳過歷年資料匯入。")
+            print("資料庫已初始化，跳過歷年資料匯入。")
             return "skipped"
         
         engine = create_engine(GCP_DB_URL)
@@ -77,21 +77,9 @@ with DAG(
         setting_pkfk(engine)
         return "completed"
 
-    @task
-    def process_recent_data_task():
-        """任務 3: 抓取並更新近期資料"""
-        print("🚀 開始抓取近期資料...")
-        new_data = auto_scrape_recent_data()
-        cleaned = car_crash_old_data_clean(transform_data_dict(new_data))
-        db_engine = load_cmp_to_new_GCP_mysql(cleaned['main'], cleaned['party'])
-        if db_engine:
-            setting_new_pkfk(db_engine)
-        return "done"
 
     # --- 定義任務流程 ---
     ready_status = check_initialization()
     hist_process = process_historical_files(ready_status)
-    recent_process = process_recent_data_task()
-
-    # 順序：檢查 -> (如有需要)跑歷年 -> 跑近期更新
-    hist_process >> recent_process
+    
+   

@@ -1,4 +1,5 @@
 from utils.sidebar import sidebar_filters
+<<<<<<< HEAD
 from folium.plugins import HeatMap
 from streamlit_folium import st_folium
 from data_loader import load_night_markets, load_accidents
@@ -7,6 +8,14 @@ import pandas as pd
 import folium
 import datetime
 import re
+=======
+from streamlit_folium import st_folium
+from data_loader import load_night_markets, load_accidents
+from utils.maps_tool import build_map
+import streamlit as st
+import pandas as pd
+import calendar
+>>>>>>> Tom
 import random
 import utils.market_tools as mt
 
@@ -15,6 +24,7 @@ import utils.market_tools as mt
 # -----------------------------------------------------
 nm_df = load_night_markets() 
 
+<<<<<<< HEAD
 # -----------------------------------------------------
 # accidents_df (事故資料) - DataFrame
 # -----------------------------------------------------
@@ -24,11 +34,19 @@ accidents_df["accident_datetime"] = pd.to_datetime(accidents_df["accident_dateti
 accidents_df["accident_weekday"] = accidents_df["accident_datetime"].dt.weekday
 accidents_df["accident_hour"] = accidents_df["accident_datetime"].dt.hour
 
+=======
+>>>>>>> Tom
 # ---------------------------------------------------------
 # 主頁面
 # ---------------------------------------------------------
 def render_home():
 
+<<<<<<< HEAD
+=======
+    if st.session_state.page != "夜市行人地獄(?)":
+        return
+
+>>>>>>> Tom
     # ⭐ 每次進入章節時清掉舊資料（避免AI詢問資料重複累積）
     if "page_data" in st.session_state:
         st.session_state["page_data"].clear()
@@ -41,6 +59,7 @@ def render_home():
 
     def load_market_by_city(city):
         return nm_df[nm_df["nightmarket_city"] == city]["nightmarket_name"].tolist()
+<<<<<<< HEAD
     # -----------------------------------------------------
     # 篩選縣市、夜市、日期篩選資料和日期類型
     # -----------------------------------------------------
@@ -58,6 +77,66 @@ def render_home():
     "filter_type": date_filter_type,
     **date_info
 }
+=======
+
+    # -----------------------------------------------------
+    # ⭐ 取得 sidebar 的篩選結果（不再回傳 date_filtered_df）
+    # -----------------------------------------------------
+    selected_city, selected_market, date_filter_type, date_info = sidebar_filters(
+        load_city_list,
+        load_market_by_city,
+    )
+
+    # -----------------------------------------------------
+    # ⭐ 在這裡才查資料（每頁只查一次）
+    # -----------------------------------------------------
+    if date_filter_type == "月份":
+        year = date_info["year"]
+        month = date_info["month"]
+        last_day = calendar.monthrange(year, month)[1]
+
+        date_filtered_df = load_accidents(
+            start_date=f"{year}-{month:02d}-01",
+            end_date=f"{year}-{month:02d}-{last_day:02d}",
+            date_filter_type=date_filter_type
+        )
+
+    elif date_filter_type == "單一日期":
+        date = date_info["date"]
+        date_filtered_df = load_accidents(
+            start_date=date,
+            end_date=date,
+            date_filter_type=date_filter_type
+        )
+
+    elif date_filter_type == "日期區間（最新7天）":
+        start_date = date_info["start_date"]
+        end_date = date_info["end_date"]
+        date_filtered_df = load_accidents(
+            start_date=start_date,
+            end_date=end_date,
+            date_filter_type=date_filter_type
+        )
+
+    elif date_filter_type == "年份（選月份）":
+        year = date_info["year"]
+        month = date_info["month"]
+        last_day = calendar.monthrange(year, month)[1]
+
+        date_filtered_df = load_accidents(
+            start_date=f"{year}-{month:02d}-01",
+            end_date=f"{year}-{month:02d}-{last_day:02d}",
+            date_filter_type=date_filter_type
+        )
+
+    filters = {
+        "city": selected_city,
+        "market": selected_market,
+        "filter_type": date_filter_type,
+        **date_info
+    }
+
+>>>>>>> Tom
     # -----------------------------------------------------
     # V1 洞察（generate_insight）
     # -----------------------------------------------------
@@ -150,6 +229,7 @@ def render_home():
     # -----------------------------------------------------
     st.markdown(""" *** """)
     st.subheader(f"📍 {selected_market} — 事故熱點地圖（可切換圖層）")
+<<<<<<< HEAD
     st.markdown("""
     <hr style="
         border: 0;
@@ -160,6 +240,9 @@ def render_home():
     """, unsafe_allow_html=True)
 
     # 自訂標題（可完全控制字體大小）
+=======
+
+>>>>>>> Tom
     st.markdown("""
     <div style="
         font-size: 20px;
@@ -171,17 +254,22 @@ def render_home():
     </div>
     """, unsafe_allow_html=True)
 
+<<<<<<< HEAD
     # selectbox 本身不顯示標題
     heat_mode = st.selectbox(
         "",
         ["☀️ 白天事故熱力圖", "🌙 夜間事故熱力圖"]
     )
+=======
+    heat_mode = st.selectbox("", ["☀️ 白天事故熱力圖", "🌙 夜間事故熱力圖"])
+>>>>>>> Tom
 
     # 中心點
     current_nm = nm_df[nm_df["nightmarket_name"] == selected_market].iloc[0]
     center_lat = current_nm["nightmarket_latitude"]
     center_lon = current_nm["nightmarket_longitude"]
 
+<<<<<<< HEAD
     # 建立地圖
     m = folium.Map(
         location=[center_lat, center_lon],
@@ -224,6 +312,8 @@ def render_home():
             )
         ).add_to(m)
 
+=======
+>>>>>>> Tom
     # 事故點權重
     date_filtered_df["heat_weight"] = date_filtered_df.apply(
         lambda r: 5 if r["death_count"] > 0 else (2 if r["injury_count"] > 0 else 1),
@@ -237,6 +327,7 @@ def render_home():
     day_df = date_filtered_df[(date_filtered_df["hour"] >= 6) & (date_filtered_df["hour"] < 18)]
     night_df = date_filtered_df[(date_filtered_df["hour"] >= 18) | (date_filtered_df["hour"] < 6)]
 
+<<<<<<< HEAD
     # ⭐ 根據選擇決定要畫哪一組資料（事故點 + 熱力圖都用這組）
     if heat_mode == "☀️ 白天事故熱力圖":
         plot_df = day_df
@@ -314,6 +405,27 @@ def render_home():
     | 0–10 🟢 安全 | 11–30 🟡 注意 | 31–60 🟠 危險 |  >60 🔴 極危險 | ⚠️ PDI = Σ（事故嚴重度 × 時段權重）
     """)
 
+=======
+    # ⭐ 決定 map_type 與 plot_df
+    if heat_mode.startswith("☀️"):
+        map_type = "day_heat"
+        plot_df = day_df
+    else:
+        map_type = "night_heat"
+        plot_df = night_df
+
+    # ⭐ 呼叫 build_map（只要這一行）
+    m = build_map(
+        map_type=map_type,
+        nm_df=nm_df,
+        center_lat=center_lat,
+        center_lon=center_lon,
+        plot_df=plot_df
+    )
+
+    # ⭐ 顯示地圖
+    st_folium(m, width=700, height=450)
+>>>>>>> Tom
 
     # -----------------------------------------------------
     # 1. 計算 PDI（使用工具版）
@@ -344,7 +456,11 @@ def render_home():
     # 排序
     pdi_rank = pdi_rank.sort_values("pdi", ascending=False).reset_index(drop=True)
 
+<<<<<<< HEAD
     # 表格資料
+=======
+    # ⭐ 表格資料（保留你的欄位名稱）
+>>>>>>> Tom
     pdi_df = pdi_rank.copy()
     pdi_df["危險等級"] = pdi_df["pdi"].apply(mt.danger_level)
     pdi_df = pdi_df.rename(columns={
@@ -356,6 +472,7 @@ def render_home():
 
     st.dataframe(pdi_df, hide_index=True)
 
+<<<<<<< HEAD
     st.markdown("""
     <style>
     .yellow-text {
@@ -385,6 +502,8 @@ def render_home():
     "></div>
     """, unsafe_allow_html=True)
 
+=======
+>>>>>>> Tom
     # -----------------------------------------------------
     # ⭐ PDI 熱力圖（依工具版 PDI 計算）
     # -----------------------------------------------------
@@ -404,8 +523,11 @@ def render_home():
     center_lat = nm_row["nightmarket_latitude"]
     center_lon = nm_row["nightmarket_longitude"]
 
+<<<<<<< HEAD
 
     # ⭐ 使用工具版邏輯計算每筆事故的 PDI 權重
+=======
+>>>>>>> Tom
     def calculate_pdi_points(acc_df, nm_row):
         WEIGHT_DEATH = 5
         WEIGHT_INJURY = 2
@@ -439,6 +561,7 @@ def render_home():
 
         return acc_in_nm
 
+<<<<<<< HEAD
 
     nm_acc = calculate_pdi_points(date_filtered_df, nm_row)
 
@@ -480,11 +603,43 @@ def render_home():
         returned_objects=[]
     )
 
+=======
+    # ⭐ 計算每筆事故的 PDI 權重
+    nm_acc = calculate_pdi_points(date_filtered_df, nm_row)
+
+    # ⭐ HeatMap 需要的格式
+    pdi_points = nm_acc[["latitude", "longitude", "pdi_weight"]].values.tolist()
+
+    # ⭐ 夜市框線
+    bounds = (
+        nm_row["nightmarket_southwest_latitude"],
+        nm_row["nightmarket_southwest_longitude"],
+        nm_row["nightmarket_northeast_latitude"],
+        nm_row["nightmarket_northeast_longitude"]
+    )
+
+    # ⭐ 呼叫 build_map()
+    pdi_map = build_map(
+        map_type="pdi_heat",
+        nm_df=nm_df,
+        center_lat=center_lat,
+        center_lon=center_lon,
+        extra={
+            "pdi_points": pdi_points,
+            "bounds": bounds
+        }
+    )
+
+    st_folium(pdi_map, width=700, height=450)
+
+
+>>>>>>> Tom
     # -----------------------------------------------------
     # ⭐ 夜市評分 vs 危險程度
     # -----------------------------------------------------
     st.subheader("⭐ 夜市評分  v s  危險程度")
 
+<<<<<<< HEAD
     rating_merge = pdi_rank.merge(
         nm_df[["nightmarket_id", "nightmarket_rating"]],
         on="nightmarket_id",
@@ -508,6 +663,25 @@ def render_home():
         "pdi": "PDI"
     })
 
+=======
+    rating_df = (
+        pdi_rank
+        .merge(
+            nm_df[["nightmarket_id", "nightmarket_rating"]],
+            on="nightmarket_id",
+            how="left"
+        )
+        .assign(危險等級=lambda df: df["pdi"].apply(mt.danger_level))
+        .sort_values(["nightmarket_rating", "pdi"], ascending=[False, False])
+        [["nightmarket_name", "nightmarket_rating", "pdi", "危險等級"]]
+        .rename(columns={
+            "nightmarket_name": "夜市名稱",
+            "nightmarket_rating": "Google 評分",
+            "pdi": "PDI"
+        })
+    )
+
+>>>>>>> Tom
     st.dataframe(rating_df, hide_index=True)
 
     top_level = mt.danger_level(pdi_rank.iloc[0]["pdi"]).replace("🟢 ", "").replace("🟡 ", "").replace("🟠 ", "").replace("🔴 ", "")
@@ -540,6 +714,7 @@ def render_home():
     </style>
     """, unsafe_allow_html=True)
 
+<<<<<<< HEAD
     pdi_raw = mt.calculate_pdi(date_filtered_df, nm_df)
     pdi_raw["nightmarket_name"] = pdi_raw["nightmarket_name"].str.strip()
     nm_df["nightmarket_name"] = nm_df["nightmarket_name"].str.strip()
@@ -557,10 +732,15 @@ def render_home():
     )
 
     pdi_rank = pdi_rank.sort_values("pdi", ascending=False).head(4).reset_index(drop=True)
+=======
+    # ⭐ 從完整 pdi_rank 取前 4 名
+    top4 = pdi_rank.sort_values("pdi", ascending=False).head(4)
+>>>>>>> Tom
 
     html_template = """
 <div class="pdi-card" style="background:{bg}; padding:16px; border-radius:12px; box-shadow:0 4px 10px rgba(0,0,0,0.15); transition:0.2s;">
 <a href="{url}" target="_blank" style="text-decoration:none;color:inherit;">
+<<<<<<< HEAD
 <div style="font-size:20px;font-weight:bold;margin-bottom:8px;color:white;text-shadow:0px 1px 2px rgba(0,0,0,0.28);
 ">{icon} 第 {rank} 名</div>
 <div style="font-size:18px;font-weight:bold;margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:white;
@@ -578,10 +758,29 @@ text-shadow:0px 1px 2px rgba(0,0,0,0.28);
 </a>
 </div>
 """
+=======
+<div style="font-size:20px;font-weight:bold;margin-bottom:8px;color:white;text-shadow:0px 1px 2px rgba(0,0,0,0.28);">
+    {icon} 第 {rank} 名</div>
+<div style="font-size:18px;font-weight:bold;margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:white;
+    padding-bottom:3px;
+    border-bottom:3px solid rgba(255,255,255,0.55);
+    text-shadow:0px 1px 2px rgba(0,0,0,0.28);
+    ">{name}({city})</div>
+<div style="font-size:16px;margin-bottom:4px;color:white;text-shadow:0px 1px 2px rgba(0,0,0,0.28);">
+    PDI：<b>{pdi}</b>（{level}）
+    </div>
+<div style="font-size:14px;color:#333;">
+    事故數：{count} 件
+</div>
+    </a>
+</div>
+    """
+>>>>>>> Tom
 
     rank_icons = ["🥇", "🥈", "🥉", ""]
 
     cards_html = '<div class="pdi-card-container">'
+<<<<<<< HEAD
     for i, (_, row) in enumerate(pdi_rank.iterrows()):
         bg = mt.danger_color(row["pdi"])
         icon = rank_icons[i]
@@ -589,13 +788,23 @@ text-shadow:0px 1px 2px rgba(0,0,0,0.28);
         cards_html += html_template.format(
             rank=i + 1,
             icon=icon,
+=======
+    for i, (_, row) in enumerate(top4.iterrows()):
+        cards_html += html_template.format(
+            rank=i + 1,
+            icon=rank_icons[i],
+>>>>>>> Tom
             name=row['nightmarket_name'],
             city=row['nightmarket_city'],
             pdi=row['pdi'],
             level=mt.danger_level(row["pdi"]),
             count=row['accident_count'],
             url=row['nightmarket_url'],
+<<<<<<< HEAD
             bg=bg
+=======
+            bg=mt.danger_color(row["pdi"])
+>>>>>>> Tom
         )
     cards_html += '</div>'
 
@@ -607,6 +816,7 @@ text-shadow:0px 1px 2px rgba(0,0,0,0.28);
     # -----------------------------------------------------
     st.subheader("🚨 事故數排行榜 Top 4")
 
+<<<<<<< HEAD
     accident_rank = pdi_rank.sort_values("accident_count", ascending=False).head(4)
 
     cards_html = '<div class="pdi-card-container">'
@@ -617,26 +827,49 @@ text-shadow:0px 1px 2px rgba(0,0,0,0.28);
         cards_html += html_template.format(
             rank=i + 1,
             icon=icon,
+=======
+    accident_top4 = pdi_rank.sort_values("accident_count", ascending=False).head(4)
+
+    cards_html = '<div class="pdi-card-container">'
+    for i, (_, row) in enumerate(accident_top4.iterrows()):
+        cards_html += html_template.format(
+            rank=i + 1,
+            icon=rank_icons[i],
+>>>>>>> Tom
             name=row['nightmarket_name'],
             city=row['nightmarket_city'],
             pdi=row['pdi'],
             level=mt.danger_level(row["pdi"]),
             count=row['accident_count'],
             url=row['nightmarket_url'],
+<<<<<<< HEAD
             bg=bg
+=======
+            bg=mt.danger_color(row["pdi"])
+>>>>>>> Tom
         )
     cards_html += '</div>'
 
     st.markdown(cards_html, unsafe_allow_html=True)
     mt.pdi_divider(last_level)
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> Tom
     # -----------------------------------------------------
     # ⭐ 第一章 AI 所需資訊 (自動化 summary_text)
     # -----------------------------------------------------
 
+<<<<<<< HEAD
     #  把CH1資料放入 session_state
 
+=======
+    # ⭐ PDI Top4（從完整 pdi_rank 取前 4 名）
+    pdi_top4 = pdi_rank.sort_values("pdi", ascending=False).head(4)
+
+    # ⭐ 存入 session_state
+>>>>>>> Tom
     st.session_state["ch1"] = {
         "selected_market": selected_market,
         "date_filtered_df": date_filtered_df,
@@ -645,6 +878,13 @@ text-shadow:0px 1px 2px rgba(0,0,0,0.28);
         "pdi_df": pdi_df,
         "nm_acc": nm_acc,
         "rating_df": rating_df,
+<<<<<<< HEAD
         "pdi_top4": pdi_rank,
         "accident_top4": accident_rank
     }
+=======
+        "pdi_top4": pdi_top4,         
+        "accident_top4": accident_top4 
+    }
+
+>>>>>>> Tom
