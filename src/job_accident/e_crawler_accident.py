@@ -118,7 +118,7 @@ def auto_scrape_recent_data()->list:
                 with requests.get(FILE_URL, headers=HEADERS, stream=True, timeout=60, verify=False) as r:
                     r.raise_for_status()
 
-                    tag_title = csv_link_tag.get('title', '')
+                    tag_title = tag.get('title', '')
                     if "ZIP" in tag_title:
                         file_name = f"recent_{count}.zip"
                     elif "CSV" in tag_title:
