@@ -54,8 +54,8 @@ def e_get_all_acc_geo(target_year: int, *, database: str | None = None) -> pd.Da
             """
 
     # 3. 從MySQL server取得資料表
+    # df_acc: ['accident_id', 'approx_accident_datetime', 'longitude', 'latitude']
     df_acc = get_table_from_sqlserver(query, database=database)
-    print("df_acc欄位名稱：", df_acc.columns)
 
     # 4. 經緯度簡化 - 進位
     # 在WGS84座標系下，經緯度差0.01度大約相當於緯度方向1110公尺、經度方向約1000公尺。
@@ -92,6 +92,17 @@ def t_dataclr_weather_hist(df_weather_raw: pd.DataFrame,
                  則回傳empty dataframe
         :rtype: DataFrame
     """
+    # # debug區
+    # print("==========清理前==========")
+    # print(f"df_all_acc_loc is:{df_all_acc_loc.info()}")
+    # print(f"df_all_acc_loc is:{df_all_acc_loc.head()}")
+    # print(f"df_weather_raw is:{df_weather_raw.info()}")
+    # print(f"df_weather_raw is:{df_weather_raw.head()}")
+
+    # 先做檢查再處理。
+    if "datetime_ISO8601" not in df_weather_raw.columns:
+        print("錯誤：輸入的 DataFrame 缺少 datetime_ISO8601 欄位")
+        return pd.DataFrame()  # 回傳空表，讓下游不會噴掉
 
     # 1. 清理df_weather_raw
     # 清理日期，統一成YYYY-mm-dd HH:MM:SS的格式並先維持字串
@@ -103,23 +114,22 @@ def t_dataclr_weather_hist(df_weather_raw: pd.DataFrame,
         "float64")
 
     # 確保兩表的lat_round&lon_round型態一致
-    df_all_acc_loc["longitude_round"] = df_all_acc_loc["longitude_round"].astype(
+    df_all_acc_loc["lat_round"] = df_all_acc_loc["lat_round"].astype(
         "float64").round(2)
-    df_all_acc_loc["latitude_round"] = df_all_acc_loc["latitude_round"].astype(
+    df_all_acc_loc["lon_round"] = df_all_acc_loc["lon_round"].astype(
         "float64").round(2)
-    df_weather_raw["lat_round"] = df_weather_raw["latitude_round"].astype(
+    df_weather_raw["latitude_round"] = df_weather_raw["latitude_round"].astype(
         "float64").round(2)
-    df_weather_raw["lon_round"] = df_weather_raw["longitude_round"].astype(
+    df_weather_raw["longitude_round"] = df_weather_raw["longitude_round"].astype(
         "float64").round(2)
-
-    # debug區
-    print(f"df_all_acc_loc is:{df_all_acc_loc.info()}")
-    print(f"df_all_acc_loc is:{df_all_acc_loc.head()}")
-    print(f"df_weather_raw is:{df_weather_raw.info()}")
-    print(f"df_weather_raw is:{df_weather_raw.head()}")
+    # print("==========清理後，Merge前==========")
+    # print(f"df_all_acc_loc is:{df_all_acc_loc.info()}")
+    # print(f"df_all_acc_loc is:{df_all_acc_loc.head()}")
+    # print(f"df_weather_raw is:{df_weather_raw.info()}")
+    # print(f"df_weather_raw is:{df_weather_raw.head()}")
 
     # 2. 濾掉跟車禍日與車禍地點不相干的資料列 (此舉在幫助將1億筆壓成150萬筆等級的資料列)
-    df_weather_mrg = df_all_acc_loc.merge(df_weather_raw, how="left",
+    df_weather_mrg = df_all_acc_loc.merge(df_weather_raw, how="inner",
                                           left_on=[
                                               "approx_accident_datetime", "lon_round", "lat_round"],
                                           right_on=[
@@ -132,7 +142,9 @@ def t_dataclr_weather_hist(df_weather_raw: pd.DataFrame,
                                             "wind_speed_10m_km_per_h", "wind_gusts_10m_km_per_h",
                                             "visibility_m", "weather_code",
                                             "longitude_round", "latitude_round"]]
-
+    # print("==========Merge後==========")
+    # print(f"df_weather_mrg is:{df_weather_mrg.info()}")
+    # print(f"df_weather_mrg is:{df_weather_mrg.head()}")
     # 3. 正式置換成寫入資料表所需的欄位名稱
     df_weather_mrg.columns = ["observation_datetime", "temperature_degree",
                               "apparent_temperature_degree", "rain_within_hour_mm",
@@ -166,6 +178,8 @@ def t_dataclr_weather_hist(df_weather_raw: pd.DataFrame,
     del df_weather_raw, df_weather_mrg
     import gc
     gc.collect()
+    print(f"Completed data cleaning! After clean, "
+          f"data loss: {(len(df_all_acc_loc)-len(df_weather_final))} / {len(df_all_acc_loc)}")
     return df_weather_final
 
 
@@ -184,7 +198,7 @@ def l_summary_report(target_year: int, upstream) -> str:
     # 1. 找出該年份的所有Parquet之檔案路徑
     gcs_hook = GCSHook(gcp_conn_id='google_cloud_default')  # 初始化
     bucket_name = 'tjr104-01_weather'
-    save_dir = f"weather_cache_final/{target_year}"
+    save_dir = f"weather_cache_final/{target_year}/data"
     all_files = gcs_hook.list(bucket_name=bucket_name,
                               prefix=save_dir)
     all_files = [f for f in all_files if f.endswith(".parquet")]
@@ -226,7 +240,7 @@ def l_transform_and_load_to_mysql(target_year: int, *, database: str | None = No
     # 4. 找出該年份的所有Parquet之檔案路徑
     gcs_hook = GCSHook(gcp_conn_id='google_cloud_default')  # 初始化
     bucket_name = 'tjr104-01_weather'
-    save_dir = f"weather_cache_final/{target_year}"
+    save_dir = f"weather_cache_final/{target_year}/data"
     all_files = gcs_hook.list(bucket_name=bucket_name,
                               prefix=save_dir)
     all_files = [f for f in all_files if f.endswith(".parquet")]
@@ -249,23 +263,28 @@ def l_transform_and_load_to_mysql(target_year: int, *, database: str | None = No
 
             # 6-1. 讀取50個檔案後合併在一個大dataframe
             df_list = []  # 將讀取的df收在一個清單
-            print(f"Downloading Batch No {i // batch_size + 1} from GCS.....")
+            print(f"Downloading Batch No {i // batch_size} from GCS.....")
             for f in batch_files:
                 file_data = gcs_hook.download(
                     bucket_name=bucket_name, object_name=f)
                 df_w_chunk = pd.read_parquet(io.BytesIO(file_data))
+
+                # 檢查必要欄位，如果不符合就跳過這個檔案，不參與合併
+                if "datetime_ISO8601" not in df_w_chunk.columns:
+                    print(f"警告：檔案 {f} 格式錯誤（缺少 datetime_ISO8601），已跳過。")
+                    continue
+
                 df_list.append(df_w_chunk)
 
             # 6-2. 清單製備好後一口氣合併
             print(f"Downloading finished. Starting to clean data.....")
+            if not df_list:
+                continue
             df_weather_raw = pd.concat(df_list, ignore_index=True)
 
-            if df_weather_raw.empty:
-                continue
-
             # 6-3.合併後開始清洗
-            df_transformed = t_dataclr_weather_hist(
-                df_weather_raw, df_all_acc_loc)
+            df_transformed = t_dataclr_weather_hist(df_weather_raw,
+                                                    df_all_acc_loc)
             df_transformed["created_by"] = writer
 
             # 6-4. 準備寫入資料表的語句
@@ -288,30 +307,23 @@ def l_transform_and_load_to_mysql(target_year: int, *, database: str | None = No
             # 6-6. 寫入資料表
             print(f"Inserting into MySQL table....")
             cursor.executemany(dml_str, df_transformed.values.tolist())
+            conn.commit()
             total_rows += len(df_transformed)
             print(
-                f"Batch {i // batch_size + 1} finished: Inserted {len(df_transformed)} rows, Total so far: {total_rows}")
-
-            # # 另外一種寫法，但或許得將pandas降到2.0.3，兼容性較好，不容易報錯(e.g. pandas only supports SQLAlchemy connectabl)
-            # engine = get_engine_sqlalchemy(database)
-            # df_transformed.to_sql(name=table_name,
-            #                       con=engine,
-            #                       if_exists="append",
-            #                       index=False,
-            #                       method="multi",
-            #                       chunksize=1000  # 每批1000筆，降低網路超時機率
-            #                       )
+                f"Batch {i // batch_size} finished: Inserted {len(df_transformed)} rows, Total so far: {total_rows}")
 
             # 7. 手動釋放該檔案佔用的記憶體
             del df_weather_raw, df_transformed, df_list
             import gc
             gc.collect()
     except Exception as e:
-        print(f"Error on Batch No {i // batch_size + 1}, Error msg: {e}")
+        print(f"Error on Batch No {i // batch_size}, Error msg: {e}")
+        print(f"Error on {batch_files}")
+        conn.rollback()
     else:
         print(f"Successfully loaded {target_year} data to GCP MySQL.")
+        return f"{target_year}_load_done"
     finally:
         # 9. 關閉cursor與conn
         cursor.close()
         conn.close()
-    return f"{target_year}_load_done"

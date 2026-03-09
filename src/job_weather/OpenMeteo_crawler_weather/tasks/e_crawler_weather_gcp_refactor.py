@@ -236,7 +236,7 @@ def e_crawler_weatherapi(batch_no: int,
                 # 定義存檔名稱
                 lat_s = str(lat_round_lst[j]).replace(".", "-")
                 lon_s = str(lon_round_lst[j]).replace(".", "-")
-                file_name = f"{save_dir}/{lat_s}_{lon_s}.parquet"
+                file_name = f"{save_dir}/data/{lat_s}_{lon_s}.parquet"
 
                 # 存成 Parquet 較節省空間(直接存到GCS上)，印出進度
                 try:

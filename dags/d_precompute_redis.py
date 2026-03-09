@@ -24,9 +24,13 @@ def get_db_engine():
         # 注意：若在 Docker 執行且 SQL 在 VM 本機，需將 URL 中的 127.0.0.1 換成 VM 內網 IP
         return create_engine(cloud_sql_url, pool_pre_ping=True)
 
-redis_host = os.getenv("REDIS_HOST") or ( "redis" if os.getenv("AIRFLOW_HOME") else "localhost" )
+if os.getenv("AIRFLOW_HOME"):
+    final_redis_host = "redis"
+else:
+    final_redis_host = "127.0.0.1"
+
 REDIS_POOL = redis.ConnectionPool(
-    host=redis_host,
+    host=final_redis_host,
     port=int(os.getenv("REDIS_PORT")),
     password=os.getenv("REDIS_PASSWORD"),
     decode_responses=False)
@@ -56,17 +60,15 @@ default_args = {
 with DAG(
     dag_id='d_dashboard_redis_precompute_parallel',
     default_args=default_args,
-    # 將原本的字串改為 timedelta，這樣就是每 15 秒跑一次，且不會有語法錯誤
-    schedule='0 2 * * *', 
+    schedule='0 2 * * *', # 每天凌晨 2 點執行一次
     start_date=datetime(2026, 3, 4, tzinfo=timezone(offset=timedelta(hours=8))),
     catchup=False,
-    max_active_runs=1, # 這個很重要！每15秒跑一次時，確保前一個沒跑完時，第二個不會重疊啟動
+    max_active_runs=1,
     tags=['dashboard', 'redis', 'parallel'],
 ) as dag:
 
     # ----------------------------------------------------------------
-    # Task 1: 負責去資料庫撈取所有夜市，並切分成 10 份 (Batches)
-    # 使用 @task 裝飾器，這是 Airflow TaskFlow API 的標準寫法
+    # Task 1: 去資料庫撈取所有夜市，並切分成 10 份 (Batches)
     # ----------------------------------------------------------------
     @task
     def fetch_and_split_markets() -> list:
@@ -98,7 +100,7 @@ with DAG(
         return batches # 這個回傳值會自動存入 XCom，傳遞給下一個任務
 
     # ----------------------------------------------------------------
-    # Task 2: 負責接收「其中 1 份」夜市清單，並進行高強度 Pandas 運算
+    # Task 2: 負責接收「其中 1 份」夜市清單，並進行 Pandas 運算
     # ----------------------------------------------------------------
     @task
     def process_market_batch(batch: list):
@@ -117,21 +119,13 @@ with DAG(
                 # 1. 一次性撈取該夜市最大範圍 (3000m) 的資料
                 max_offset = 3.0 / 111.0 
                 params = {"min_lat": lat - max_offset, "max_lat": lat + max_offset, "min_lon": lon - max_offset, "max_lon": lon + max_offset}
-                
-
                 sql_base = text("""
-                    SELECT a.accident_id, a.accident_datetime, a.latitude, a.longitude, 
-                        a.death_count, a.injury_count, a.primary_cause, a.Year, a.Hour, a.Weekday_CN,
-                        m.weather_condition,
-                        CASE 
-                            WHEN a.Hour >= 6 AND a.Hour < 12 THEN '早'
-                            WHEN a.Hour >= 12 AND a.Hour < 18 THEN '午'
-                            ELSE '晚'
-                        END AS Period
-                    FROM test_accident.tbl_accident_analysis a
-                    LEFT JOIN test_accident.accident_sq1_main m ON a.accident_id = m.accident_id
-                    WHERE a.latitude BETWEEN :min_lat AND :max_lat 
-                    AND a.longitude BETWEEN :min_lon AND :max_lon
+                    SELECT latitude, longitude, accident_datetime, 
+                           death_count, injury_count, primary_cause, Year, Hour, 
+                           weather_condition
+                    FROM frontend_db.tbl_accident_analysis_final
+                    WHERE latitude BETWEEN :min_lat AND :max_lat 
+                    AND longitude BETWEEN :min_lon AND :max_lon
                 """)
                 
                 try:
@@ -167,16 +161,21 @@ with DAG(
                         continue
                     
                     # 4. 緊湊化的指標與圖表運算
-                    stats = {"total": len(df_target), "dead": int(df_target['death_count'].sum()), "hurt": int(df_target['injury_count'].sum())}
-                    charts = {
-                        'top10': df_target['primary_cause'].value_counts().head(10).rename_axis('肇因').reset_index(name='件數'),
-                        'hour': df_target['Hour'].value_counts().sort_index().rename_axis('Hour').reset_index(name='件數'),
-                        'weather': df_target.groupby('weather_condition').agg(件數=('accident_id','count'), 死亡=('death_count','sum'), 受傷=('injury_count','sum')).rename_axis('天氣').reset_index()
-                    }
+                    # stats = {"total": len(df_target), "dead": int(df_target['death_count'].sum()), "hurt": int(df_target['injury_count'].sum())}
+                    # charts = {
+                    #     'top10': df_target['primary_cause'].value_counts().head(10).rename_axis('肇因').reset_index(name='件數'),
+                    #     'hour': df_target['Hour'].value_counts().sort_index().rename_axis('Hour').reset_index(name='件數'),
+                    #     'weather': df_target.groupby('weather_condition').agg(件數=('accident_id','count'), 死亡=('death_count','sum'), 受傷=('injury_count','sum')).rename_axis('天氣').reset_index()
+                    # }
                     # map_df = df_target.nlargest(1000, ['death_count', 'injury_count', 'accident_datetime'])[['accident_datetime', 'latitude', 'longitude', 'death_count', 'injury_count', 'primary_cause', 'Year', 'Hour', 'weather_condition']]
-                    set_cache(cache_key, (df_target, stats, charts, pd.DataFrame()))
+                    # set_cache(cache_key, (df_target, stats, charts, pd.DataFrame()))
 
-                    # set_cache(cache_key, (map_df, stats, charts, pd.DataFrame()))
+                    # 只保留前端會用到的必要欄位
+                    map_columns = ['accident_datetime', 'Year', 'Hour', 'primary_cause', 'weather_condition', 'latitude', 'longitude', 'death_count', 'injury_count']
+                    map_df = df_target[map_columns]
+
+                    # 塞入空字典 {} 代替原本浪費時間計算的 stats 與 charts
+                    set_cache(cache_key, (map_df, {}, {}, pd.DataFrame()))
                 
                 print(f"完成夜市計算: {round(lat,4)}, {round(lon,4)}")
                 time.sleep(0.05) # 批次內仍保留微小延遲，避免瞬間 CPU 飆升
@@ -184,11 +183,10 @@ with DAG(
         return f"本批次 {len(batch)} 個夜市處理完成"
 
     # ----------------------------------------------------------------
-    # 任務依賴與動態映射設定 (Dynamic Task Mapping)
+    # 3. 任務依賴和平行執行
     # ----------------------------------------------------------------
-    # 1. 取得切分好的 10 份名單
+    # 取得切分好的 10 份名單
     market_batches = fetch_and_split_markets()
-    
-    # 2. .expand() 是平行運算的靈魂。
-    # 根據 market_batches 清單的長度 (10)，自動複製出 10 個 process_market_batch 任務同時平行執行。
+    # expand() 
+    # 根據 market_batches 清單的長度 (10)，自動複製出 10 個 process_market_batch 任務同時平行執行
     process_market_batch.expand(batch=market_batches)
