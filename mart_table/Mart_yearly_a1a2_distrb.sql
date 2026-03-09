@@ -1,5 +1,5 @@
 -- 創立各年度A1A2比例分佈分析資料表
--- 1. 先建立年度基礎統計 A1/A2比例
+-- 1. 先建立年度基礎統計 A1/A2比例，建成view表
 CREATE OR REPLACE VIEW v_accident_yearly_counts AS
 	(SELECT
 		YEAR(accident_datetime) AS `year`,
@@ -12,7 +12,7 @@ CREATE OR REPLACE VIEW v_accident_yearly_counts AS
 			FROM accident_sq1_main
 				GROUP BY `year`, accident_category);
 
--- 2. 再建立逐年累計事故案件數量 
+-- 2. 再建立逐年累計事故案件數量，建成view表
 CREATE OR REPLACE VIEW v_accident_yearly_running_counts AS
 	(SELECT 
 		`year`,
@@ -25,7 +25,7 @@ CREATE OR REPLACE VIEW v_accident_yearly_running_counts AS
 				GROUP BY `year`);
 
 
--- 3. 將兩張表合併, 改建table
+-- 3. 將兩張表合併，建成實體table。
 CREATE TABLE IF NOT EXISTS mart_yearly_a1a2_distrb AS
 	(SELECT v1.*, v2.yearly_total, v2.running_total
 		FROM v_accident_yearly_counts v1

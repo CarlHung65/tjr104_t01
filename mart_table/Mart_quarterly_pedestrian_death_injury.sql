@@ -1,6 +1,6 @@
 -- 建立各季度行人涉入車禍案件中傷亡人數的分析表
--- 1. 篩選車禍當事者為行人的資料列
-CREATE OR REPLACE VIEW v_accident_sq1_plus_sq2_process AS
+-- 1. 篩選車禍當事者有行人的資料列
+CREATE OR REPLACE VIEW v_accident_sq1process_sq2process AS
 	(SELECT * FROM accident_sq1_process
 			WHERE vehicle_type_minor like "行人"
 				UNION ALL
@@ -14,22 +14,18 @@ CREATE OR REPLACE VIEW v_accident_sq1_plus_sq2_process AS
 						WHERE vehicle_type_minor like "行人");
 					
 -- 2. 由於需要車禍日期、死傷人數，所以從sq1_main JOIN過來
-CREATE OR REPLACE VIEW v_accident_sq1_plus_newsq1_main AS
+CREATE OR REPLACE VIEW v_accident_sq1main_newsq1main AS
 	(SELECT * FROM  accident_new_sq1_main
 		UNION ALL
 		SELECT * FROM accident_sq1_main);
 
-CREATE OR REPLACE VIEW  v_accident_sq1_plus_sq2_process_plus_sq1main AS
-	(SELECT vp.accident_id, 
-			vp.cause_analysis_minor_individual, 
-			vp.vehicle_type_minor, 
-			vm.accident_category, 
+CREATE OR REPLACE VIEW v_accident_sq1prs_sq2prs_sq1m_newsq1m AS
+	(SELECT vp.accident_id,  
             vm.accident_datetime, 
-            vm.accident_weekday,
 			vm.death_count, 
             vm.injury_count
-		FROM v_accident_sq1_plus_sq2_process vp
-			LEFT JOIN v_accident_sq1_plus_newsq1_main vm
+		FROM v_accident_sq1process_sq2process vp
+			LEFT JOIN v_accident_sq1main_newsq1main vm
 				ON vp.accident_id = vm.accident_id);
                 
 -- 3. 建立Mart層圖表
@@ -40,7 +36,7 @@ CREATE TABLE IF NOT EXISTS mart_quarterly_pedestrian_dj AS
 		MONTH(accident_datetime) AS `month`,
 		SUM(death_count) AS death_monthly_total,
 		SUM(injury_count) AS injury_monthly_total
-			FROM v_accident_sq1_plus_sq2_process_plus_sq1main
+			FROM v_accident_sq1prs_sq2prs_sq1m_newsq1m
 				GROUP BY `year`, `quarter`, `month`
 					ORDER BY `year`, `quarter`);
 
@@ -80,5 +76,6 @@ UPDATE mart_quarterly_pedestrian_dj
 		`avg+stdev_monthly_injury_btw_2021_2023` = @`avg+sd_injury`,
 		`avg-stdev_monthly_injury_btw_2021_2023` = @`avg-sd_injury`;
 
-DROP VIEW v_accident_sq1_plus_sq2_process;
-DROP VIEW v_accident_sq1_plus_newsq1_main;
+DROP VIEW v_accident_sq1process_sq2process;
+DROP VIEW v_accident_sq1main_newsq1main;
+DROP VIEW v_accident_sq1prs_sq2prs_sq1m_newsq1m;
