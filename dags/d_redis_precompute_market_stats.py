@@ -11,30 +11,49 @@ from sqlalchemy import create_engine
 from dotenv import load_dotenv
 
 load_dotenv()
-
+# ==========================================
 # 建立資料庫連線
-# 優先嘗試連線至 Cloud SQL，若無設定則退回連線至本地端的跳板機 (3308 port)
+# ==========================================
 def get_db_engine():
-    if cloud_sql_url := os.getenv("CLOUDSQL_URL"):
-        return create_engine(cloud_sql_url, pool_pre_ping=True)
+    db_user = os.getenv("DB_USER")
+    db_pass = quote_plus(os.getenv("DB_PASS"))
+    db_host = os.getenv("DB_HOST")
+    db_port = os.getenv("DB_PORT")
+    target_db = "frontend_db_consol" # 要寫入的目標y資料庫
     
-    passwd = quote_plus(os.getenv("MYSQL_PASSWORD", "123456"))
-    target_db = os.getenv("MYSQL_DATABASE", "frontend_db_consol")
-    uri = f"mysql+pymysql://root:{passwd}@127.0.0.1:3308/{target_db}?charset=utf8mb4"
+    uri = f"mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{target_db}?charset=utf8mb4"
     return create_engine(uri, pool_pre_ping=True)
 
 def load_night_markets():
     engine = get_db_engine()
-    return pd.read_sql("SELECT * FROM `test_night_market`.`Night_market_merge`", engine)
+    return pd.read_sql("SELECT * FROM `car_accident`.`Night_market_merge`", engine)
+
+# ==========================================
+# Redis 連線設定
+# ==========================================
+def get_redis_pool():
+    # 在新 VM Docker 環境下，Host 直接使用服務名稱 "redis"
+    host = os.getenv("REDIS_HOST", "redis")
+    port = int(os.getenv("REDIS_PORT", 6379))
+    password = os.getenv("REDIS_PASSWORD", "123456")
+    return redis.ConnectionPool(
+        host=host, port=port, password=password if password else None, decode_responses=False)
+
+# 在全域初始化一次即可，後續所有任務共用此池
+REDIS_POOL = get_redis_pool()
+
+def get_redis_client():
+    # 每次需要操作 Redis 時從池子裡拿一個連線出來
+    return redis.Redis(connection_pool=REDIS_POOL)
+
+# 在全域初始化一次即可，後續所有任務共用此連線
+r = get_redis_client()
 
 # 預先計算夜市統計數據
 # 主要 Python 任務 - 空間運算與指標聚合
 def precompute_market_stats():
     nm_df = load_night_markets()
     engine = get_db_engine()
-    
-    final_redis_host = "redis" if os.getenv("AIRFLOW_HOME") else "127.0.0.1"
-    r = redis.Redis(host=final_redis_host, port=int(os.getenv("REDIS_PORT", 6379)), password=os.getenv("REDIS_PASSWORD", "123456"), db=0)
     
     # 定義要獨立計算的目標：先算全部，再依序算各個年份
     target_years = ['all', 2026, 2025, 2024, 2023, 2022, 2021]
@@ -103,8 +122,8 @@ def precompute_market_stats():
                 "nightmarket_rating": float(nm.get("nightmarket_rating", 0.0)),
                 "nightmarket_url": nm.get("nightmarket_url", ""),
                 "accident_count": stats_board[name]["count"],
-                "death_count": stats_board[name]["dead"],
-                "injury_count": stats_board[name]["hurt"],
+                "death_count": stats_board.get(name, {}).get("dead", 0),
+                "injury_count": stats_board.get(name, {}).get("hurt", 0),
                 "pdi": stats_board[name]["pdi"]
             })
             
@@ -124,6 +143,8 @@ def precompute_market_stats():
     # 產出 Act 3 行人步行建議導航 (等年份跑完後，一次結算)
     # 分析單一夜市的各項風險特徵
     # ====================================================
+    # 重新宣告 Redis 連線，供 Act3 寫入使用
+    r = get_redis_client()
     print("各年份統計已完成。開始計算 Act3 行人步行建議導航...")
     final_act3_guides = {}
     for _, nm in nm_df.iterrows():
@@ -161,17 +182,27 @@ def precompute_market_stats():
             
             # 計算每個入口到所有「事故點」的最短距離
             # 選出「最短距離中的最大值」，代表該入口離所有危險點最遠
-            def min_dist(point):
-                return min([np.sqrt((point[0] - lat)**2 + (point[1] - lon)**2) for lat, lon in df_tight[["latitude", "longitude"]].values])
-                
-            best_exit = max(candidates.items(), key=lambda x: min_dist(x[1]))
+            # 修改內部函式定義
+            def min_dist(point, current_df):
+                return min([np.sqrt((point[0] - lat)**2 + (point[1] - lon)**2) for lat, lon in current_df[["latitude", "longitude"]].values])
+            # 修改呼叫方式
+            best_exit = max(candidates.items(), key=lambda x: min_dist(x[1], df_tight))
             
+            # 確保有事故資料才計算最短距離 (安全護欄)
+            if not df_tight.empty:
+                best_exit = max(candidates.items(), key=lambda x: min_dist(x[1], df_tight))
+                best_entry_name = best_exit[0]
+                best_entry_coord = best_exit[1]
+            else:
+                best_entry_name = "無事故資料，皆可進入"
+                best_entry_coord = [c_lat, c_lon] # 預設使用夜市中心點
             final_act3_guides[name] = {
                 "peak_period": peak_period,
                 "rain_increase": int(rain_ratio),
                 "danger_zone": f"{danger_zone} ({zone_map[danger_zone]}件)",
-                "best_entry_name": best_exit[0],
-                "best_entry_coord": best_exit[1]}
+                "best_entry_name": best_entry_name,
+                "best_entry_coord": best_entry_coord}
+            
     # 將行人步行建議導航推上Redis(使用 pickle)
     r.set("market:act3_guide_cache", pickle.dumps(final_act3_guides), ex=864000)
     print("行人步行建議導航已成功寫入 Redis！")
@@ -184,7 +215,7 @@ default_args = {
     'retries': 1,
     'retry_delay': timedelta(minutes=5),}
 
-with DAG('nightmarket_data_sync', default_args=default_args, schedule='0 4 * * *', catchup=False) as dag:
+with DAG('d_redis_nightmarket_data', default_args=default_args, schedule='0 4 * * *', catchup=False) as dag:
     sync_task = PythonOperator(
         task_id='precompute_and_push_to_redis',
         python_callable=precompute_market_stats)
