@@ -1,0 +1,455 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+from datetime import datetime
+import sys
+import os
+import redis
+import pickle
+import core.c_data_service as ds
+import core.c_ui as ui
+from core.r_cache import REDIS_POOL
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+st.set_page_config(layout="wide", page_title="各縣市夜市事故比較分析", page_icon="🏙️")
+
+# 自定義地理排序清單
+# 將縣市與區域陣列寫死，確保在圖表下拉選單與表格繪製時，能維持習慣的地理順序
+REGION_ORDER = ["北部", "中部", "南部", "東部", "離島"]
+CITY_ORDER = [
+    "臺北市", "新北市","基隆市", "桃園市", "新竹市", "新竹縣", "宜蘭縣",
+    "苗栗縣", "臺中市", "彰化縣", "南投縣", "雲林縣",
+    "嘉義市", "嘉義縣", "臺南市", "高雄市", "屏東縣",
+    "花蓮縣", "臺東縣",
+    "澎湖縣", "金門縣", "連江縣"]
+
+# ==========================================
+# 資料存取層
+# ==========================================
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_real_city_data():
+    try:
+        r = redis.Redis(connection_pool=REDIS_POOL)
+        data = r.get("market:national_master_df")
+        if data:
+            df = pickle.loads(data)
+            
+            # 【去重複機制】防止跨夜市重疊區域的事故被重複計算
+            if 'accident_id' in df.columns:
+                df = df.drop_duplicates(subset=['accident_id'])
+                
+            df['accident_date'] = pd.to_datetime(df['accident_datetime'])
+            df['year_quarter'] = df['accident_date'].dt.year.astype(str) + " Q" + df['accident_date'].dt.quarter.astype(str)
+            df['city'] = df['nightmarket_city']
+            
+            df = df[(df['city'].notna()) & (df['city'].astype(str).str.strip() != '') & (df['city'] != 'None')]
+            
+            region_map = {
+                "臺北市": "北部", "新北市": "北部", "基隆市": "北部", "桃園市": "北部", "新竹市": "北部", "新竹縣": "北部", "宜蘭縣": "北部",
+                "臺中市": "中部", "苗栗縣": "中部", "彰化縣": "中部", "南投縣": "中部", "雲林縣": "中部",
+                "臺南市": "南部", "高雄市": "南部", "嘉義市": "南部", "嘉義縣": "南部", "屏東縣": "南部",
+                "花蓮縣": "東部", "臺東縣": "東部", "澎湖縣": "離島", "金門縣": "離島", "連江縣": "離島"
+            }
+            df['region'] = df['city'].map(region_map).fillna("其他")
+            return df
+    except Exception as e:
+        st.error(f"Redis 讀取失敗: {e}")
+    return pd.DataFrame()
+
+# 動態風險評級函數
+# 依據傳入的數值與區域基準值(benchmark) 計算落差比例
+def get_risk_level(val, benchmark):
+    """依據與基準值的差距，給予分級標籤"""
+    if benchmark == 0 or pd.isna(benchmark) or pd.isna(val): 
+        return "⚪ 無資料", "#94a3b8"
+    ratio = (val - benchmark) / benchmark
+    if ratio > 0.3: return "🔴 極危險", "#ef4444"
+    elif ratio > 0.15: return "🟠 危險", "#f97316"
+    elif ratio > 0.05: return "🟡 注意", "#eab308"
+    elif ratio >= -0.05: return "🔵 基準水準", "#3b82f6"
+    else: return "🟢 安全", "#10b981"
+
+def main():
+    df_market = ds.get_all_nightmarkets()
+    ui.render_sidebar(df_market)
+    
+    st.markdown("""
+    <style>
+    div[data-testid="stVerticalBlock"] > div { padding-bottom: 0rem; }
+    .kpi-box { background-color: #ffffff; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .kpi-title { font-size: 13px; color: #64748b; margin-bottom: 6px; font-weight: bold; }
+    .kpi-value { font-size: 26px; font-weight: 900; color: #1e293b; margin-bottom: 4px; }
+    .kpi-delta { font-size: 12.5px; font-weight: bold; padding: 2px 6px; border-radius: 4px; display: inline-block; }
+    .delta-good { color: #10b981; background-color: #d1fae5; }
+    .delta-bad { color: #ef4444; background-color: #fee2e2; }
+    .delta-neutral { color: #64748b; background-color: #f1f5f9; }
+    .section-title { font-size: 15px; font-weight: bold; color: #1f2937; margin-bottom: 10px; margin-top: 15px; border-left: 4px solid #3b82f6; padding-left: 8px;}
+    .metric-card { padding: 16px; border-radius: 8px; color: white; margin-bottom: 10px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+    .metric-card.danger { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+    .metric-card.neutral { background: linear-gradient(135deg, #64748b 0%, #475569 100%); }
+    .metric-card.safe { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+    .metric-card-title { font-size: 13px; opacity: 0.9; margin-bottom: 4px; font-weight: bold; }
+    .metric-card-entity { font-size: 24px; font-weight: bold; margin-bottom: 4px; letter-spacing: 1px; }
+    .metric-card-value { font-size: 15px; font-weight: 500; background-color: rgba(255,255,255,0.2); display: inline-block; padding: 2px 8px; border-radius: 4px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<h2 style='margin-top: 0px; margin-bottom: 5px;'>🏙️ 各縣市夜市事故比較分析：<span style='color:#3b82f6;'>城市安全對標</span></h2>", unsafe_allow_html=True)
+    st.info("""
+    💡 **數據判讀須知**：
+    1. **空間範圍**：本頁指標與排名【包含夜市方圓 500 公尺核心區內所有類型車禍】，並已剔除重疊事故紀錄。
+    2. **時間完整性**：⚠️ **2026 Q1 數據目前僅統計至 1 月份**。季度比較趨勢之落差係因資料統計週期不完整所致，非實際事故量大幅下降，判讀時請留意。
+    """)
+    
+    df_raw = get_real_city_data()
+    if df_raw.empty:
+        st.warning("無數據可供分析。")
+        return
+
+    # 切割為雙欄寬版配置
+    col_left, col_right = st.columns([1, 2.8], gap="large")
+
+    with col_left:
+        st.markdown('<div class="section-title" style="margin-top:0px;">切換分析視角</div>', unsafe_allow_html=True)
+        mode = st.radio(
+            "切換分析視角", 
+            ["綜合危險指數 (PDI)", "總事故件數", "死亡人數", "受傷人數"], 
+            horizontal=True, 
+            label_visibility="collapsed"
+        )
+        
+        is_pdi_mode = (mode == "綜合危險指數 (PDI)")
+        if is_pdi_mode:
+            agg_col, agg_func, unit, fmt = 'pdi_score', 'mean', '分', '{:.1f}'
+        elif mode == "總事故件數":
+            agg_col, agg_func, unit, fmt = 'accident_id', 'count', '件', '{:,.0f}'
+        elif mode == "死亡人數":
+            agg_col, agg_func, unit, fmt = 'death_count', 'sum', '人', '{:,.0f}'
+        else:
+            agg_col, agg_func, unit, fmt = 'injury_count', 'sum', '人', '{:,.0f}'
+
+        st.markdown("""
+        <div style="background-color: #f8fafc; border-left: 4px solid #94a3b8; padding: 12px 16px; border-radius: 0 8px 8px 0; margin-bottom: 20px; margin-top: 10px;">
+            <div style="font-weight: bold; color: #334155; margin-bottom: 6px; font-size: 13px;">💡 什麼是 PDI 危險指數？</div>
+            <ul style="font-size: 12.5px; color: #475569; line-height: 1.6; margin-bottom: 0; padding-left: 18px;">
+                <li><b>PDI公式：</b> ((死亡×10 + 受傷×2) / 該區總事故數) × 1.5</li>
+                <li><b>分母對齊：</b> 除以總件數標準化風險，消除規模誤差。</li>
+                <li><b>判定：</b> 數值越高代表一旦發生事故「非死即傷」機率越高。</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown('<div class="section-title">🗺️ 分析區域與縣市篩選</div>', unsafe_allow_html=True)
+        with st.container(border=True):
+            # 強制地理排序
+            raw_regions = df_raw['region'].unique()
+            region_opts = ["全部區域"] + [r for r in REGION_ORDER if r in raw_regions]
+            sel_region = st.selectbox("分析區域", region_opts)
+            
+            if sel_region != "全部區域":
+                raw_cities = df_raw[df_raw['region'] == sel_region]['city'].unique()
+            else:
+                raw_cities = df_raw['city'].unique()
+                
+            city_opts_list = [c for c in CITY_ORDER if c in raw_cities]
+            sel_city = st.selectbox("分析縣市", ["全部縣市"] + city_opts_list)
+
+        st.markdown('<div class="section-title">📅 分析時間篩選</div>', unsafe_allow_html=True)
+       
+        with st.container(border=True):
+            years_available = sorted(list(df_raw['Year'].unique()), reverse=True)
+            sel_year_str = st.selectbox("年份", ["全部年份"] + [str(y) for y in years_available])
+            
+            c_q, c_m = st.columns(2)
+            with c_q: sel_q = st.selectbox("季度", ["全年", "第 1 季", "第 2 季", "第 3 季", "第 4 季"])
+            with c_m: sel_m = st.selectbox("月份", ["全部"] + [f"{i} 月" for i in range(1, 13)])
+            
+            week_map = {0: "全部", 1: "週一", 2: "週二", 3: "週三", 4: "週四", 5: "週五", 6: "週六", 7: "週日"}
+            sel_w = st.selectbox("星期", list(week_map.values()))
+            
+            heat_mode = st.radio("時段", ["全部", "白天 (06-18)", "夜間 (18-06)"], horizontal=True)
+
+        # ------------------
+        # 資料過濾邏輯
+        # ------------------
+        # 動態決定群組維度
+        # 如果使用者沒有鎖定單一縣市，圖表就以「縣市(city)」為單位作比較；如果鎖定了特定縣市，圖表會自動往下取，改以該縣市內的「夜市(nightmarket_name)」為單位作比較
+        target_entity_col = 'city' if sel_city == "全部縣市" else 'nightmarket_name'
+        display_area_name = sel_city if sel_city != "全部縣市" else (sel_region if sel_region != "全部區域" else "全台")
+        entity_label = "縣市" if target_entity_col == 'city' else "夜市"
+
+        df_time_base = df_raw.copy()
+        if sel_q != "全年": df_time_base = df_time_base[df_time_base['Quarter'] == int(sel_q.split()[1])]
+        if sel_m != "全部": df_time_base = df_time_base[df_time_base['Month'] == int(sel_m.split()[0])]
+        if sel_w != "全部": df_time_base = df_time_base[df_time_base['Weekday'] == {v: k for k, v in week_map.items()}[sel_w]]
+        if "白天" in heat_mode: df_time_base = df_time_base[(df_time_base['Hour'] >= 6) & (df_time_base['Hour'] < 18)]
+        elif "夜間" in heat_mode: df_time_base = df_time_base[(df_time_base['Hour'] >= 18) | (df_time_base['Hour'] < 6)]
+
+        df_area_base = df_time_base.copy()
+        if sel_region != "全部區域": df_area_base = df_area_base[df_area_base['region'] == sel_region]
+        if sel_city != "全部縣市": df_area_base = df_area_base[df_area_base['city'] == sel_city]
+
+        df_current = df_area_base.copy()
+        if sel_year_str != "全部年份":
+            df_current = df_current[df_current['Year'] == int(sel_year_str)]
+
+        st.markdown(f'<div class="section-title">📈 歷年趨勢 ({display_area_name})</div>', unsafe_allow_html=True)
+        with st.container(border=True):
+            if not df_area_base.empty:
+                # Plotly 動態圖表切換
+                # 若為 PDI 指數，使用「折線圖 (Lines)」顯示波動，並加上全台均線對標；若為件數或人數，改用「長條圖 (Bar)」表現累積量體
+                trend_agg = df_area_base.groupby('Year').agg(val=(agg_col, agg_func)).reset_index().sort_values('Year')
+                nat_trend_agg = df_time_base.groupby('Year').agg(val=(agg_col, agg_func)).reset_index().sort_values('Year')
+                
+                fig_trend = go.Figure()
+                if is_pdi_mode:
+                    fig_trend.add_trace(go.Scatter(x=trend_agg['Year'], y=trend_agg['val'], name=f'{display_area_name} PDI', mode='lines+markers', line=dict(color='#ef4444', width=3)))
+                    fig_trend.add_trace(go.Scatter(x=nat_trend_agg['Year'], y=nat_trend_agg['val'], name='全台均線', mode='lines', line=dict(color='#64748b', width=2, dash='dash')))
+                    fig_trend.update_yaxes(title="平均 PDI")
+                else:
+                    fig_trend.add_trace(go.Bar(x=trend_agg['Year'], y=trend_agg['val'], name=f'{display_area_name} {mode}', marker_color='#3b82f6'))
+                    fig_trend.update_yaxes(title=mode)
+                    
+                fig_trend.update_layout(xaxis=dict(type='category'), legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1), margin=dict(l=0, r=0, t=10, b=0), height=250, plot_bgcolor='white', hovermode="x unified")
+                st.plotly_chart(fig_trend, use_container_width=True)
+            else:
+                st.info("無趨勢資料")
+
+    with col_right:
+        st.markdown(f"<div style='font-size:17px; font-weight:bold; color:#1f2937; margin-top:5px; margin-bottom:12px;'>🚦 {display_area_name} 安全基準線與現況排名 (依 {entity_label} 分析)</div>", unsafe_allow_html=True)
+        
+        if not df_current.empty:
+            entity_metrics = df_current.groupby(target_entity_col).agg(val=(agg_col, agg_func), total_acc=('accident_id', 'count')).reset_index()
+            
+            if not entity_metrics.empty:
+                entity_stats = entity_metrics.sort_values(by='val', ascending=False).reset_index(drop=True)
+                entity_stats['排名'] = range(1, len(entity_stats) + 1)
+                
+                area_median_val = entity_stats['val'].median()
+                median_row = entity_stats.iloc[(entity_stats['val'] - area_median_val).abs().argsort()[:1]].iloc[0]
+                worst_row = entity_stats.iloc[0]
+                best_row = entity_stats.iloc[-1]
+                
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    st.markdown(f"""<div class="metric-card danger"><div class="metric-card-title">🚨 最高風險 (天花板)</div><div class="metric-card-entity">{worst_row[target_entity_col]}</div><div class="metric-card-value">{fmt.format(worst_row['val'])} {unit} ({int(worst_row['total_acc']):,}件事故)</div></div>""", unsafe_allow_html=True)
+                with c2:
+                    st.markdown(f"""<div class="metric-card neutral"><div class="metric-card-title">🎯 中線基準 (Median)</div><div class="metric-card-entity">{median_row[target_entity_col]}</div><div class="metric-card-value">{fmt.format(median_row['val'])} {unit} ({int(median_row['total_acc']):,}件事故)</div></div>""", unsafe_allow_html=True)
+                with c3:
+                    st.markdown(f"""<div class="metric-card safe"><div class="metric-card-title">🏆 最佳典範 (地板)</div><div class="metric-card-entity">{best_row[target_entity_col]}</div><div class="metric-card-value">{fmt.format(best_row['val'])} {unit} ({int(best_row['total_acc']):,}件事故)</div></div>""", unsafe_allow_html=True)
+
+                with st.container(border=True):
+                    entity_stats['val_str'] = entity_stats['val'].apply(lambda x: fmt.format(x))
+                    entity_stats['排名_str'] = entity_stats['排名'].astype(str)
+                    
+                    df_transposed = entity_stats[[target_entity_col, '排名_str', 'val_str']].set_index(target_entity_col).T
+                    df_transposed.index = ['排名', mode]
+                    
+                    st.dataframe(df_transposed, use_container_width=True)
+        else:
+            st.info(f"目前篩選條件下無 {display_area_name} 的資料。")
+
+        df_nat_current = df_time_base.copy()
+        if sel_year_str != "全部年份": df_nat_current = df_nat_current[df_nat_current['Year'] == int(sel_year_str)]
+        
+        current_val = df_current[agg_col].agg(agg_func) if not df_current.empty else 0
+        if target_entity_col == 'nightmarket_name':
+            nat_benchmark = df_nat_current.groupby('nightmarket_name')[agg_col].agg(agg_func).mean() if not df_nat_current.empty else 0
+        else:
+            nat_benchmark = df_nat_current.groupby('city')[agg_col].agg(agg_func).mean() if not df_nat_current.empty else 0
+        
+        if is_pdi_mode:
+            sub_val = len(df_current)
+            sub_title, sub_unit, sub_fmt = "事故總件數", "件", "{:,.0f}"
+        else:
+            sub_val = df_current['pdi_score'].mean() if not df_current.empty else 0
+            sub_title, sub_unit, sub_fmt = "平均 PDI", "分", "{:.1f}"
+
+        yoy_val, yoy_text, yoy_class = 0, "-", "delta-neutral"
+        prev_year = None
+        if sel_year_str != "全部年份":
+            prev_year = int(sel_year_str) - 1
+            df_prev = df_area_base[df_area_base['Year'] == prev_year]
+            if not df_prev.empty:
+                prev_val = df_prev[agg_col].agg(agg_func) if not df_prev.empty else 0
+                if prev_val > 0:
+                    yoy_val = ((current_val - prev_val) / prev_val) * 100
+                    yoy_text = "↑ 惡化" if yoy_val > 0 else "↓ 進步" if yoy_val < 0 else "持平"
+                    yoy_class = "delta-bad" if yoy_val > 0 else "delta-good" if yoy_val < 0 else "delta-neutral"
+            else:
+                yoy_text = "無前年資料"
+
+        st.markdown(f'<div class="section-title">📊 {display_area_name} 綜合安全體檢表 ({sel_year_str})</div>', unsafe_allow_html=True)
+        with st.container(border=True):
+            k1, k2, k3, k4 = st.columns(4)
+            with k1:
+                diff = current_val - nat_benchmark
+                diff_class = "delta-bad" if diff > 0 else "delta-good" if diff < 0 else "delta-neutral"
+                
+                diff_fmt_str = "{:+.1f}" if is_pdi_mode else "{:+,.0f}"
+                diff_text = f"{diff_fmt_str.format(diff)} (vs 全國 {entity_label} 均值)" if (sel_city != "全部縣市" or sel_region != "全部區域" or is_pdi_mode) else "全台總計"
+                
+                st.markdown(f"""
+                <div class='kpi-box'>
+                    <div class='kpi-title'>{mode}</div>
+                    <div class='kpi-value'>{fmt.format(current_val)} <span style='font-size:14px; font-weight:normal;'>{unit}</span></div>
+                    <div class='kpi-delta {diff_class}'>{diff_text}</div>
+                </div>""", unsafe_allow_html=True)
+            with k2:
+                level_text, level_color = get_risk_level(current_val, nat_benchmark) if (sel_city != "全部縣市" or sel_region != "全部區域" or is_pdi_mode) else ("⚪ 基準", "#94a3b8")
+                st.markdown(f"""
+                <div class='kpi-box'>
+                    <div class='kpi-title'>對標評級判定</div>
+                    <div class='kpi-value' style='color:{level_color};'>{level_text}</div>
+                    <div class='kpi-delta delta-neutral'>依據與均值差距</div>
+                </div>""", unsafe_allow_html=True)
+            with k3:
+                st.markdown(f"""
+                <div class='kpi-box'>
+                    <div class='kpi-title'>{sub_title}</div>
+                    <div class='kpi-value'>{sub_fmt.format(sub_val)} <span style='font-size:14px; font-weight:normal;'>{sub_unit}</span></div>
+                    <div class='kpi-delta delta-neutral'>輔助觀測指標</div>
+                </div>""", unsafe_allow_html=True)
+            with k4:
+                display_yoy = f"{abs(yoy_val):.1f}%" if yoy_val != 0 else "-"
+                st.markdown(f"""
+                <div class='kpi-box'>
+                    <div class='kpi-title'>YoY 總體變化率</div>
+                    <div class='kpi-value'>{display_yoy}</div>
+                    <div class='kpi-delta {yoy_class}'>{yoy_text}</div>
+                </div>""", unsafe_allow_html=True)
+
+        col_c_left, col_c_right = st.columns([1.4, 1], gap="medium")
+        
+        with col_c_left:
+            st.markdown(f'<div class="section-title">🎯 {display_area_name} 安全風險象限分析 (維度：{entity_label})</div>', unsafe_allow_html=True)
+            with st.container(border=True):
+                # 象限分析
+                # 結合件數與平均 PDI 兩個維度，利用 Plotly 繪製散佈圖
+                if not df_current.empty:
+                    quadrant_stats = df_current.groupby(target_entity_col).agg(
+                        pdi_mean=('pdi_score', 'mean'), acc_count=('accident_id', 'count')).reset_index()
+                    
+                    if len(quadrant_stats) > 1:
+                        avg_pdi_line = quadrant_stats['pdi_mean'].mean()
+                        avg_count_line = quadrant_stats['acc_count'].mean()
+                        
+                        fig_scatter = px.scatter(
+                            quadrant_stats, x="acc_count", y="pdi_mean", text=target_entity_col,
+                            color="pdi_mean", color_continuous_scale="Reds",
+                            labels={"acc_count": "事故發生件數", "pdi_mean": "平均危險指數 (PDI)"})
+                        
+                        # 加入平均輔助線
+                        fig_scatter.add_hline(y=avg_pdi_line, line_dash="dot", line_color="#94a3b8", annotation_text="PDI 均線")
+                        fig_scatter.add_vline(x=avg_count_line, line_dash="dot", line_color="#94a3b8", annotation_text="件數均線")
+                        fig_scatter.update_traces(textposition='top center', marker=dict(size=12, opacity=0.8, line=dict(width=1, color='DarkSlateGrey')))
+                        fig_scatter.update_layout(height=380, margin=dict(l=10, r=10, t=10, b=10), coloraxis_showscale=False, plot_bgcolor='#f8fafc')
+                        st.plotly_chart(fig_scatter, use_container_width=True)
+                    else:
+                        st.info(f"當前範圍內需有 2 個以上的 {entity_label} 方可繪製分佈象限圖。")
+                else:
+                    st.info("無足夠資料點繪製象限圖")
+
+        with col_c_right:
+            st.markdown(f'<div class="section-title">📉 歷年 {entity_label} 排行變化 (Top 10)</div>', unsafe_allow_html=True)
+            with st.container(border=True):
+                # 歷年排名變動矩陣
+                # 使用 pivot_table 攤平年份資料，比較每一年榜單上前 10 名的對象，並標註 (🔼/🔽) 以呈現名次的升降變化。
+                if not df_area_base.empty:
+                    pivot_df = df_area_base.pivot_table(index=target_entity_col, columns='Year', values=agg_col, aggfunc=agg_func, fill_value=0)
+                    years_sorted = sorted(pivot_df.columns, reverse=True)
+                    
+                    if len(years_sorted) > 0:
+                        rank_records = []
+                        for rank_idx in range(1, 11):
+                            row_data = {"名次": f"第 {rank_idx} 名"}
+                            for y_idx, y in enumerate(years_sorted):
+                                sorted_y = pivot_df[y].sort_values(ascending=False)
+                                sorted_y = sorted_y[sorted_y > 0]
+                                
+                                if len(sorted_y) >= rank_idx:
+                                    entity_name = sorted_y.index[rank_idx-1]
+                                    mark = "(—)"
+                                    if y_idx + 1 < len(years_sorted):
+                                        prev_y = years_sorted[y_idx+1]
+                                        prev_sorted = pivot_df[prev_y].sort_values(ascending=False)
+                                        prev_sorted = prev_sorted[prev_sorted > 0]
+                                        if entity_name in prev_sorted.index:
+                                            prev_rank = prev_sorted.index.get_loc(entity_name) + 1
+                                            change = prev_rank - rank_idx
+                                            if change > 0: mark = f"(🔼 {change})"
+                                            elif change < 0: mark = f"(🔽 {abs(change)})"
+                                        else:
+                                            mark = "(新)"
+                                    row_data[str(y)] = f"{entity_name} {mark}"
+                                else:
+                                    row_data[str(y)] = "-"
+                            rank_records.append(row_data)
+                            
+                        df_rank_display = pd.DataFrame(rank_records)
+                        st.dataframe(df_rank_display, use_container_width=True, hide_index=True, height=380)
+                    else:
+                        st.info("無歷年資料可供比較")
+                else:
+                    st.info("無資料")
+
+        suffix = f"({sel_year_str} vs {prev_year})" if prev_year else "(請選擇單一年份)"
+        st.markdown(f'<div class="section-title">⚖️ 各 {entity_label} YoY 改善幅度排行總表 <span style="font-size:13px; font-weight:normal; color:#64748b;">{suffix}</span></div>', unsafe_allow_html=True)
+        st.markdown("""
+        <div style="background-color: #f8fafc; border-left: 4px solid #f59e0b; padding: 10px; border-radius: 0 8px 8px 0; margin-bottom: 12px; font-size: 13px; color: #334155; line-height: 1.5;">
+            <b>💡 YoY 變化量判讀差異：</b><br>
+            • 此圖表為「今年對比去年」的變化量，排在越前面代表狀況惡化最嚴重。<br>
+            • 正值 (紅色) 代表「變危險/增加」；負值 (綠色) 代表「變安全/減少」。<br>
+            • 指標若選擇 PDI 則顯示改善率 (%)，其餘絕對指標顯示淨變化量以避免基數扭曲。
+        </div>
+        """, unsafe_allow_html=True)
+        
+        with st.container(border=True):
+            if sel_year_str == "全部年份":
+                st.info("請於左側選擇單一年份以產生對比分析。")
+            else:
+                yoy_list = []
+                if not df_current.empty and not df_prev.empty:
+                    curr_stats = df_current.groupby(target_entity_col).agg(val=(agg_col, agg_func)).reset_index()
+                    prev_stats = df_prev.groupby(target_entity_col).agg(val=(agg_col, agg_func)).reset_index()
+                    
+                    for _, row in curr_stats.iterrows():
+                        entity_name = row[target_entity_col]
+                        curr_val = row['val']
+                        prev_row = prev_stats[prev_stats[target_entity_col] == entity_name]
+                        
+                        if not prev_row.empty:
+                            prev_val = prev_row.iloc[0]['val']
+                            if prev_val > 0:
+                                delta_pct = ((curr_val - prev_val) / prev_val) * 100
+                                delta_abs = curr_val - prev_val
+                                yoy_list.append({'名稱': entity_name, 'YoY': delta_pct, '淨變化': delta_abs})
+                
+                if yoy_list:
+                    yoy_df = pd.DataFrame(yoy_list).sort_values('YoY', ascending=False).reset_index(drop=True)
+                    yoy_df['排名'] = range(1, len(yoy_df) + 1)
+                    
+                    if is_pdi_mode:
+                        yoy_df['YoY_str'] = yoy_df['YoY'].apply(lambda x: f"+{x:.1f}%" if x > 0 else f"{x:.1f}%")
+                        row_label = 'YoY 改善率 (%)'
+                    else:
+                        yoy_df['YoY_str'] = yoy_df.apply(lambda row: f"+{row['淨變化']:,.0f} ({row['YoY']:+.1f}%)" if row['淨變化'] > 0 else f"{row['淨變化']:,.0f} ({row['YoY']:+.1f}%)", axis=1)
+                        row_label = 'YoY 淨變化'
+                        
+                    yoy_df['排名_str'] = yoy_df['排名'].astype(str)
+                    df_yoy_transposed = yoy_df[['名稱', '排名_str', 'YoY_str']].set_index('名稱').T
+                    df_yoy_transposed.index = ['排名', row_label]
+                    
+                    def color_yoy_row(row):
+                        if row.name == row_label:
+                            return ['color: #ef4444; font-weight: bold;' if '+' in str(v) else 'color: #10b981; font-weight: bold;' if '-' in str(v) else '' for v in row]
+                        return ['' for _ in row]
+
+                    st.dataframe(df_yoy_transposed.style.apply(color_yoy_row, axis=1), use_container_width=True)
+                else:
+                    st.info("無足夠的前期資料可供比對計算。")
+
+if __name__ == "__main__":
+    main()
