@@ -28,6 +28,7 @@ HEADERS = {
 SEQ_PAGE_URL = ["https://data.gov.tw/dataset/158865","https://data.gov.tw/dataset/161199",
                 "https://data.gov.tw/dataset/167905","https://data.gov.tw/dataset/172969",
                 "https://data.gov.tw/dataset/177136"]
+ONE_PAGE_URL = "https://data.gov.tw/dataset/177136"
 RECENT_PAGE_A1_URL = "https://data.gov.tw/dataset/12818"
 RECENT_PAGE_A2_URL = "https://data.gov.tw/dataset/13139"
 
