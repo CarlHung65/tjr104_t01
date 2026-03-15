@@ -41,14 +41,14 @@ def accident_weather_pipeline():
             batches = prep_batch_plan(df, year, batch_size=50)
             # MappedOperator
             craw_done = e_crawler_weatherapi.partial(
-                target_year=year).expand(batch_no=batches)
+                target_year=year).expand(batch_id=batches)
 
             report_done = l_summary_report(target_year=year,
                                            upstream=craw_done)
             load_done = l_transform_and_load_to_mysql(target_year=year,
                                                       database="car_accident",
                                                       upstream=report_done)
-            l_load_to_bridge_table(target_years,
+            l_load_to_bridge_table(year,
                                    database="car_accident",
                                    upstream=load_done)
 

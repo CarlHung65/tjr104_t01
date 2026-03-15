@@ -24,7 +24,7 @@ default_args = {
     dag_id='d_weatherapi_keep_refresh_this_year',
     default_args=default_args,
     description="ETL process from requesting weather API for the weather data between 'January 01st~3-day-prior-to-today' until loading to MySQL database",
-    schedule='00 05 */3 * *',  # 每3天的05點00分執行一次
+    schedule='00 07 */3 * *',  # 每月1、4、7、10、13、16日的07點00分執行一次
     start_date=datetime(2026, 2, 25, 5, 00,
                         tzinfo=timezone(offset=timedelta(hours=8))),
     catchup=False,
@@ -39,7 +39,7 @@ def accident_weather_pipeline():
         batches = prep_batch_plan(df, this_year, batch_size=50)
         # MappedOperator
         craw_done = e_crawler_weatherapi.partial(
-            target_year=this_year).expand(batch_no=batches)
+            target_year=this_year).expand(batch_id=batches)
 
         report_done = l_summary_report(target_year=this_year,
                                        upstream=craw_done)

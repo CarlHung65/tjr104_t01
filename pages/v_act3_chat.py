@@ -1,7 +1,9 @@
 import streamlit as st
 import ollama
 import requests
-from summary import build_context
+from utils.summary import build_context
+import core.c_data_service as ds
+import core.c_ui as ui
 
 SYSTEM_PROMPT = """
 你是本交通事故地圖專案的 AI 小幫手，請使用自然、流暢、像真人的繁體中文回答。
@@ -38,12 +40,6 @@ def check_ollama():
 
 def act6_render(page):
 
-<<<<<<< HEAD
-=======
-    if st.session_state.page != "AI 小幫手":
-        return
-
->>>>>>> Tom
     if "ai_step" not in st.session_state:
         st.session_state["ai_step"] = 1
 
@@ -135,7 +131,7 @@ def act6_render(page):
     """, unsafe_allow_html=True)
 
     if not check_ollama():
-        st.error("⚠️ 無法連線到 Ollama。請先啟動 Ollama，然後重新整理頁面。")
+        st.error("⚠️ 無法連線到本地 AI 服務。若想進行互動，請先至 [Ollama 官網](https://ollama.com/) 下載軟體，並於終端機輸入 \ollama run llama3.2:1b` 啟動模型後，再重新整理此頁面。")
         st.stop()
 
     # -----------------------------------------------------
@@ -206,3 +202,24 @@ def act6_render(page):
     else:
         st.session_state["ai_step"] += 1
 
+
+if __name__ == "__main__":
+    df_market = ds.get_all_nightmarkets()
+    ui.render_sidebar(df_market)
+    act6_render("AI 小幫手")
+"""
+act6_chat.py 裡面的主函式被定義為 def act6_render(page):，這代表這個函式「規定必須要收到一個叫做 page 的參數」才能執行
+因為現在把act6_chat.py 搬到 pages 資料夾變成獨立的頁面，沒有原本的側邊欄去傳遞這個變數給它
+如果只寫 act6_render()，Python 執行時就會直接報錯，提示缺少必要的引數。
+為了符合原本程式碼的規定，又不需要去大改函式結構，只要直接傳一個字串（例如這個頁面的名稱）給它當作參數就可以了
+"""
+
+if __name__ == "__main__":
+    import sys
+    import os
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+    import core.c_data_service as ds
+    import core.c_ui as ui
+    df_market = ds.get_all_nightmarkets()
+    ui.render_sidebar(df_market)
+    act6_render()

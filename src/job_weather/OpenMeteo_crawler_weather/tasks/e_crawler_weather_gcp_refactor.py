@@ -48,12 +48,15 @@ def e_get_uniq_acc_geo(target_year: int, *, database: str | None = None) -> pd.D
             """
 
     # 3. 從MySQL server取得資料表
+    print(f"Querying TABLE {table_name} FROM DATABASE {database}...")
     df_acc = get_table_from_sqlserver(query, database=database)
-    print("df_acc欄位名稱：", df_acc.columns)  # debug區
+    print(
+        f"Finished the query! The fetched result contains columns: \n {df_acc.columns}")
+
     # 4. 經緯度簡化 - 進位
     # 在WGS84座標系下，經緯度差0.01度大約相當於緯度方向1110公尺、經度方向約1000公尺。
-    # 一般天氣預報模型網格解析度為1~20公里，0.01度差異(約1公里)在同一網格內，對預報影響很小。
-    # 所以將經緯度統一進位到小數點後2位，減少送請求次數與後續要處理的資料量。
+    # 一般天氣模型網格解析度為1~20公里，0.01度差異(約1公里)在同一網格內，對觀測結果影響很小。
+    # 所以將經緯度統一進位到小數點後2位，減少API請求次數與後續要處理的資料量。
     df_acc["lat_round"] = df_acc["latitude"].astype("float64").round(2)
     df_acc["lon_round"] = df_acc["longitude"].astype("float64").round(2)
 
@@ -64,7 +67,8 @@ def e_get_uniq_acc_geo(target_year: int, *, database: str | None = None) -> pd.D
     df_acc_uniq_loc = df_acc_uniq_loc.loc[:, ["lat_round", "lon_round"]]
 
     print(
-        f"Year {target_year}: Found {len(df_acc_uniq_loc)} unique locations.")
+        f"FOR Year {target_year}: \nGot {len(df_acc_uniq_loc)} unique locations "
+        f"from the TABLE {table_name} containing {len(df_acc)} accidents.")
 
     return df_acc_uniq_loc
 
@@ -74,24 +78,24 @@ def e_get_uniq_acc_geo(target_year: int, *, database: str | None = None) -> pd.D
 
 @task
 def prep_batch_plan(df_acc_unique_loc: pd.DataFrame, target_year: int,
-                    batch_size=50) -> list[pd.DataFrame]:
+                    batch_size=50) -> list[int]:
     """
-        將DataFrame: df_acc_unique_loc中的經緯度組合與data warehouse中的天氣觀測資料(e.g. GCS上的.parquet)比對，
-        盤點有哪些經緯度組合的年度天氣觀測資料尚未下載並存放於data warehouse。
-        過濾並留下有缺失天氣觀測資料的經緯度組合所屬的資料列，然後以50列為一批次單位，切割df_acc_unique_loc資料列。
+        將DataFrame: df_acc_unique_loc中的經緯度組合與GCS既有的天氣觀測資料比對，
+        盤點有哪些經緯度組合的年度天氣觀測資料尚未下載&尚未存放於GCS。
+        過濾並留下"缺失天氣觀測資料的經緯度組合"它所屬的資料列，然後以50列為一批次單位，
+        將資料量切塊至"50列/dataframe"後，另存於GCS的tmp路徑下。
 
         :param df_acc_unique_loc: 經過進位與去重而得到的事故地經緯度
         :type df_acc_unique_loc: pd.DataFrame
-        :param target_year: 要從data warehouse (e.g. GCS)查詢哪一年份的天氣觀測資料
+        :param target_year: 要從GCS查詢哪一年份的天氣觀測資料
         :type target_year: int
-        :param batch_size: 針對在df_acc_unique_loc裡面發現有缺失天氣觀測資料的資料列，
-        以batch_size的資料列切割出不同batch的dataframe，batch_size預設值為50列(50個經緯度組合)
-        :return: 裝有多個批次(batch)的dataframes的list，每一元素為一個批次df
-        :rtype: list[DataFrame]
+        :param batch_size: 幾個資料列為一批次，預設值為50列(即50個獨特的經緯度組合)
+        :return: 裝有多個批號的list，每一元素為一個批號。
+        :rtype: list[int]
     """
 
-    # 1. 組合出一個Series，描述各資料列對應的檔案名稱，並增加為新的一欄
-    df_acc_uniq_loc = df_acc_unique_loc.loc[:, ["lat_round", "lon_round"]]
+    # 1. 取出經緯度資訊，定義出一個經緯度地點的氣象觀測資料的檔案名稱
+    df_acc_uniq_loc = df_acc_unique_loc.copy()
     df_acc_uniq_loc["file_name"] = (
         df_acc_uniq_loc["lat_round"].astype(str).str.replace(".", "-", regex=False) + "_" +
         df_acc_uniq_loc["lon_round"].astype(str).str.replace(".", "-", regex=False) +
@@ -102,9 +106,10 @@ def prep_batch_plan(df_acc_unique_loc: pd.DataFrame, target_year: int,
     bucket_name = 'tjr104-01_weather'
     save_dir = f"weather_cache_final/{target_year}"
 
-    # 3. 查詢目前GCS的save_dir有幾份檔.parquet，存成set，可以減少時間複雜度至O(1)
+    # 3. 查詢目前GCS的data路徑下面有幾份.parquet檔案，並存成set、可以減少後續找元素時的時間複雜度
+    print(f"Searching the existing files in {save_dir}...")
     files = gcs_hook.list(bucket_name=bucket_name,
-                          prefix=save_dir)
+                          prefix=f"{save_dir}/data")
     existing_files = {Path(f).name for f in files if f.endswith(".parquet")}
 
     # 4. 針對歷史年份，用~排除同名檔案。針對尚未結束的今年，不排除同名檔案。
@@ -112,32 +117,37 @@ def prep_batch_plan(df_acc_unique_loc: pd.DataFrame, target_year: int,
     if target_year < this_year:
         df_needed = df_acc_uniq_loc[~df_acc_uniq_loc["file_name"].isin(
             existing_files)]
+        print(f"FOR Year {target_year}: \nThere are {len(existing_files)} files already existing on GCS. "
+              f"Therefore, {len(df_needed)} locations without saved weather data should be extra collected.")
     else:
         df_needed = df_acc_uniq_loc.copy()
+        print(f"FOR Year {target_year}: \nThere are {len(existing_files)} files already existing on GCS. "
+              f"However, these files will be repeatedly collected and overwriten to include "
+              f"more 3 days of weather data since last saving.")
 
-    # 5. 利用for-loop切分出每一次請求下的請求計畫(batch plan)，內容包含：經緯度與檔名。
+    # 5. 制訂batch plan，並將每一batch的dataframe存到GCS的tmp路徑下，對應批號則存到batch plan變數。
     batch_plan = []
 
     for i in range(0, len(df_needed), batch_size):
-        df_a_batch = df_needed.iloc[i: i + batch_size]
-        df_a_batch["batch_id"] = i
+        df_a_batch = df_needed.iloc[i: i + batch_size].copy()
+        batch_id = i // batch_size
+        df_a_batch["batch_id"] = batch_id
 
-        # 最穩定的 (io.BytesIO + engine='pyarrow')可以避開 pandas內部讀寫GCS可能產生的版本衝突
+        # 使用最穩定的 (io.BytesIO + engine='pyarrow')，避開pandas內部讀寫GCS可能產生的版本衝突
         buffer = io.BytesIO()
-        df_a_batch.to_parquet(
-            buffer, index=False, engine='pyarrow')
+        df_a_batch.to_parquet(buffer, index=True, engine='pyarrow')
         buffer.seek(0)
         gcs_hook.upload(
             bucket_name=bucket_name,
-            object_name=f"{save_dir}/tmp/batch_from_row_no_{i}.parquet",
+            object_name=f"{save_dir}/tmp/batch_no_{batch_id}.parquet",
             data=buffer.getvalue(),  # parquet資料透過data傳入，預設會覆蓋同名檔案
             mime_type='application/octet-stream')
 
-        batch_plan.append(i)
-        # batch_plan.append(df_a_batch)
+        # 存下對應批號
+        batch_plan.append(batch_id)
 
-    print(f"資料夾已存有{len(existing_files)}個地點對應的檔案，故尚須處理{len(df_needed)}個地點。")
-    print(f"總結切分出{len(batch_plan)}份批數，分批請求API")
+    print(f"FOR Year {target_year}: \n, there are {len(batch_plan)} batches "
+          f"that we will call for weather API by the sub-tasks.")
 
     del df_acc_uniq_loc, df_acc_unique_loc
     import gc
@@ -158,41 +168,41 @@ def prep_batch_plan(df_acc_unique_loc: pd.DataFrame, target_year: int,
     execution_timeout=timedelta(hours=2),
     do_xcom_push=False  # 回傳的xcom不推送到下一個task，省掉存xcom的記憶體空間
 )
-def e_crawler_weatherapi(batch_no: int,
+def e_crawler_weatherapi(batch_id: int,
                          target_year: int) -> str | None:
     """
-        Extract: 遍歷引入的batch_no找到開啟對應的df_one_batch中的經緯度資料，向OpenMeteo historical weather API
-        請求該地點的某個整年度天氣觀測資料。
+        Extract: 遍歷引入的batch_no找到開啟對應的df_one_batch，擷取當中的經緯度欄位，
+        向OpenMeteo historical weather API請求該地點的某個整年度天氣觀測資料。
 
-        :param df_one_batch: 包含經度與緯度的dataframe
-        :type df_one_batch: pd.DataFrame
+        :param batch_id: 批號
+        :type batch_id: int
         :param target_year: 說明向OpenMeteo historical weather API請求哪一年度的天氣觀測資料
         :type target_year: int
         :return: GCS bucke名稱字串，若request API失敗或觸發例外則回傳None
         :rtype: str | None
     """
-
+    print(f"Processing batch no {batch_id}......")
     # 1. 宣告在GCS上存parquet的路徑名稱
     gcs_hook = GCSHook(gcp_conn_id='google_cloud_default')  # 初始化
     bucket_name = 'tjr104-01_weather'
     save_dir = f"weather_cache_final/{target_year}"
 
-    # 從開啟df_one_batch
+    # 2. 從GCS上打開df_one_batch
     file_data = gcs_hook.download(bucket_name=bucket_name,
-                                  object_name=f"{save_dir}/tmp/batch_from_row_no_{batch_no}.parquet")
+                                  object_name=f"{save_dir}/tmp/batch_no_{batch_id}.parquet")
     df_one_batch = pd.read_parquet(io.BytesIO(file_data))
     df_one_batch["lat_round"] = df_one_batch["lat_round"].astype(
         "float64").round(2)
     df_one_batch["lon_round"] = df_one_batch["lon_round"].astype(
         "float64").round(2)
 
-    # 2. 遍歷df_one_batch，把經緯度的值分別組合出一個字串
+    # 3. Calling for API時，需要將經緯度以字串形式傳入參數，故遍歷df_one_batch把經度、緯度分別組合出一組字串
     lat_round_lst = [str(lat_num) for lat_num in df_one_batch["lat_round"]]
     lon_round_lst = [str(lon_num) for lon_num in df_one_batch["lon_round"]]
     lats_str = ",".join(lat_round_lst)
     lons_str = ",".join(lon_round_lst)
 
-    # 3. 準備要拋給API的param，一次針對50個經緯地點，抓一年份數據，中間會逐點存檔，但整體而言這樣算一次請求
+    # 3. Calling for API時，需要傳入日期區間作為參數，故準備start_date＆end_date兩字串
     start_date = f"{target_year}-01-01"
     # 如果當年度尚未結束，但end_date設定為yyyy-12-31再作為參數傳入的話，API會回傳None，因此需要彈性指派end_date的值
     today = pendulum.now()
@@ -200,25 +210,18 @@ def e_crawler_weatherapi(batch_no: int,
     this_year = today.year
     end_date = f"{target_year}-12-31" if this_year > target_year else f"{previous_day}"
 
-    # 指派要請求什麼氣象指標
+    # 4. Calling for API時，需要傳入氣象指標
     vars = ["temperature_2m", "apparent_temperature", "rain",
             "showers", "precipitation", "visibility", "weather_code",
             "wind_speed_10m", "wind_gusts_10m"]
-    # 4. 預備欄位名稱
-    col_name = ['datetime_ISO8601', 'temperature_2m_degree',
-                'apparent_temperature_degree', 'rain_mm',
-                'showers_mm', 'precipitation_mm',
-                'visibility_m', 'weather_code',
-                "wind_speed_10m_km_per_h", "wind_gusts_10m_km_per_h",
-                'latitude_round', 'longitude_round']
 
-    # 5. calling API
+    # 5. Calling for API
     data = request_weather_api(lats_str, lons_str, start_date, end_date, vars)
 
     # 6. 將請求結果data做簡易清洗後就立即存成parquet，備份資料源。
     if data:
         data = data if isinstance(data, list) else [data]
-
+        print("Received the response from API.")
         # 追蹤寫入失敗的檔案數量
         failed_files = 0
         for j in range(0, len(data)):  # len(data) == len(lat_round_lst)
@@ -230,22 +233,29 @@ def e_crawler_weatherapi(batch_no: int,
                 df_a_loc_hourly['latitude_round'] = float(lat_round_lst[j])
                 df_a_loc_hourly['longitude_round'] = float(lon_round_lst[j])
 
-                # 置換成想要的欄位名稱，但盡可能的跟資料源欄位名稱一樣，此步驟能做到與API隔離就好
+                # 置換成想要的欄位名稱
+                # 但盡可能的跟response中欄位名稱一樣，此步驟能做到與API端口隔離就好。
+                col_name = ['datetime_ISO8601', 'temperature_2m_degree',
+                            'apparent_temperature_degree', 'rain_mm',
+                            'showers_mm', 'precipitation_mm',
+                            'visibility_m', 'weather_code',
+                            "wind_speed_10m_km_per_h", "wind_gusts_10m_km_per_h",
+                            'latitude_round', 'longitude_round']
                 df_a_loc_hourly.columns = col_name
 
                 # 定義存檔名稱
                 lat_s = str(lat_round_lst[j]).replace(".", "-")
                 lon_s = str(lon_round_lst[j]).replace(".", "-")
-                file_name = f"{save_dir}/{lat_s}_{lon_s}.parquet"
+                file_name = f"{save_dir}/data/cralwer_batch_{batch_id}_{lat_s}_{lon_s}.parquet"
 
                 # 存成 Parquet 較節省空間(直接存到GCS上)，印出進度
                 try:
-                    print(f"正在處理: {(j+1)}/{len(data)} file")
+                    print(f"Saving the {(j+1)}/{len(data)} file....")
 
-                    # 最穩定的 (io.BytesIO + engine='pyarrow')可以避開 pandas內部讀寫GCS可能產生的版本衝突
                     buffer = io.BytesIO()
-                    df_a_loc_hourly.to_parquet(
-                        buffer, index=False, engine='pyarrow')
+                    df_a_loc_hourly.to_parquet(buffer,
+                                               index=False,
+                                               engine='pyarrow')
                     buffer.seek(0)
                     gcs_hook.upload(
                         bucket_name=bucket_name,
@@ -254,19 +264,24 @@ def e_crawler_weatherapi(batch_no: int,
                         mime_type='application/octet-stream')
                 except Exception as e:
                     failed_files += 1  # 失敗就累計1
-                    print(f"第{j+1}/{len(data)} file寫入失敗! {e}")
+                    print(
+                        f"Failed to save the file!\nError msg:{e}")
                 else:
-                    print(f"已成功寫入第{j+1}/{len(data)} file: {file_name}!")
+                    print(
+                        f"Successfully saved the file, {file_name}!")
+        print(f"Finished the batch {batch_id}!")
 
         # 迴圈結束後結算失敗率
         if failed_files / len(data) > 0.2:
             # 太高則raise Exception，task會進入重試機制
-            raise AirflowException(f"寫入失敗率過高: {failed_files}/{len(data)}失敗")
+            raise AirflowException(
+                f"Alarm: Failure rate was too high: {failed_files}/{len(data)} failed")
         elif failed_files / len(data) > 0:
-            print(f"警告，部分資料寫入失敗，失敗率: {failed_files}/{len(data)}")
+            print(
+                f"Warning: Partially failure on {failed_files}/{len(data)} files.")
     else:
-        # 印出前100個字看發生什麼事，印出進度
-        print(f"API回傳內容: {str(data)[:100]}")
+        # 若data是Falthy value，印出前100個字看發生什麼事
+        print(f"API return Data as: {str(data)[:100]}")
 
     # 7. sleep緩解server負擔
     time.sleep(random.uniform(5, 10))

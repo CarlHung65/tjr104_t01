@@ -19,7 +19,17 @@ from src.job_weather.OpenMeteo_crawler_weather.utils.create_weather_related_tabl
 @task(retries=2, retry_delay=timedelta(minutes=10), execution_timeout=timedelta(hours=4))
 def l_load_to_bridge_table(target_year: int, *, database: str | None = None,
                            upstream) -> None:
-    """"""
+    """制訂氣象觀測資料與車禍事故的橋接表，描述一場車禍ID對應到哪一筆氣象觀測紀錄ID。
+
+        :param target_year: 要處理哪一年的資料列來做橋接
+        :type target_year: int
+        :param database: 打算寫入的資料庫名稱，如不指定(None)，則會寫入預設資料庫
+        :type database: str | None = None
+        :param upstream: 此任務依賴於哪個上游任務之return value
+        :return: 
+        :rtype: None
+    """
+
     # 1. 設定要橋接的資料表名稱
     this_year = datetime.now().year
     w_table_name = "weather_hourly_history" if target_year < this_year else "weather_hourly_now"
@@ -28,10 +38,9 @@ def l_load_to_bridge_table(target_year: int, *, database: str | None = None,
     create_bridge_table(w_table_name, a_table_name,
                         bridge_table_name, database=database)
 
-    # 2. 準備與MySQL server的連線，用作為底層驅動的pymysql建立conn
-    conn = get_conn_pymysql(database)
     try:
-        # 3. 用作為底層驅動的pymysql建立conn＆cursor
+        # 2. 準備與MySQL server的連線，建立conn＆cursor
+        conn = get_conn_pymysql(database)
         cursor = conn.cursor()
         dml_str = f"""INSERT INTO {bridge_table_name} 
                             (accident_id, weather_record_id, 
@@ -52,17 +61,21 @@ def l_load_to_bridge_table(target_year: int, *, database: str | None = None,
                                         FROM {a_table_name}
                                         WHERE YEAR(accident_datetime) = {target_year}
                                     ) a_tmp
-                                LEFT JOIN {w_table_name} w ON 
+                                INNER JOIN {w_table_name} w ON 
                                     w.observation_datetime = a_tmp.approx_accident_datetime AND 
                                     w.longitude_round = a_tmp.longitude_round AND
                                     w.latitude_round = a_tmp.latitude_round
+                                ON DUPLICATE KEY UPDATE 
+                                observation_datetime = VALUES(observation_datetime)
                             ;"""
+        # 3. 執行SQL語句
         cursor.execute(dml_str)
+        conn.commit()
     except Exception as e:
         print(f"Error on inserting into bridging table, Error msg: {e}")
+        conn.rollback()
     else:
         print(f"Successfully inserting into bridging table")
-        conn.commit()
     finally:
         cursor.close()
         conn.close()

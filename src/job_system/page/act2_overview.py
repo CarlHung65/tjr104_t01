@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 from folium.plugins import HeatMap, HeatMapWithTime, MarkerCluster
 from streamlit_folium import st_folium
 from streamlit.components.v1 import html
@@ -11,12 +12,29 @@ import plotly.express as px
 import random
 import folium
 import datetime
+=======
+from folium.plugins import HeatMapWithTime, MarkerCluster
+from streamlit_folium import st_folium
+from streamlit.components.v1 import html
+from utils.sidebar import sidebar_filters
+from data_loader import load_night_markets, load_env_factors, load_human_factors, load_accidents
+from utils.maps_tool import build_map_cluster
+from utils.charts_tool import build_cause_charts, build_rain_comparison_charts, build_weather_radar_chart
+
+import streamlit as st
+import pandas as pd
+import utils.market_tools as mt
+import plotly.express as px
+import random
+import calendar
+>>>>>>> Tom
 
 # -----------------------------------------------------
 # nm_df (夜市資料) - DataFrame
 # -----------------------------------------------------
 nm_df = load_night_markets()
 
+<<<<<<< HEAD
 # -----------------------------------------------------
 # accidents_df 事故資料（事故主表）- DataFrame
 # -----------------------------------------------------
@@ -36,14 +54,26 @@ human_factors_df = load_human_factors(columns="accident_id, cause_analysis_minor
 # -----------------------------------------------------
 road_factors_df = load_env_factors(columns="accident_id, light_condition")
 
+=======
+>>>>>>> Tom
 # ---------------------------------------------------------
 # Act2 主頁面
 # ---------------------------------------------------------
 def act2_render():
 
+<<<<<<< HEAD
     # ⭐ 每次進入章節時清掉舊資料（避免AI詢問資料重複累積）
     if "page_data" in st.session_state:
         st.session_state["page_data"].clear()
+=======
+    if st.session_state.page != "夜市老實說":
+        return
+
+    # ⭐ 每次進入章節時清掉舊資料
+    if "page_data" in st.session_state:
+        st.session_state["page_data"].clear()
+
+>>>>>>> Tom
     # -----------------------------------------------------
     # 定義兩個函式給 sidebar_filters 使用
     # -----------------------------------------------------
@@ -54,6 +84,7 @@ def act2_render():
         return nm_df[nm_df["nightmarket_city"] == city]["nightmarket_name"].tolist()
 
     # -----------------------------------------------------
+<<<<<<< HEAD
     # 篩選縣市、夜市、日期篩選資料和日期類型
     # -----------------------------------------------------
     # 1. 取得 sidebar 的篩選結果
@@ -70,6 +101,88 @@ def act2_render():
     "filter_type": date_filter_type,
     **date_info
 }
+=======
+    # ⭐ 取得 sidebar 的篩選結果
+    # -----------------------------------------------------
+    selected_city, selected_market, date_filter_type, date_info = sidebar_filters(
+        load_city_list,
+        load_market_by_city,
+    )
+
+    # -----------------------------------------------------
+    # ⭐ 查事故主表（智慧 LIMIT）
+    # -----------------------------------------------------
+    if date_filter_type == "月份":
+        year = date_info["year"]
+        month = date_info["month"]
+        last_day = calendar.monthrange(year, month)[1]
+
+        date_filtered_df = load_accidents(
+            start_date=f"{year}-{month:02d}-01",
+            end_date=f"{year}-{month:02d}-{last_day:02d}",
+            date_filter_type=date_filter_type
+        )
+
+    elif date_filter_type == "單一日期":
+        date = date_info["date"]
+        date_filtered_df = load_accidents(
+            start_date=date,
+            end_date=date,
+            date_filter_type=date_filter_type
+        )
+
+    elif date_filter_type == "日期區間（最新7天）":
+        start_date = date_info["start_date"]
+        end_date = date_info["end_date"]
+        date_filtered_df = load_accidents(
+            start_date=start_date,
+            end_date=end_date,
+            date_filter_type=date_filter_type
+        )
+
+    elif date_filter_type == "年份（選月份）":
+        year = date_info["year"]
+        month = date_info["month"]
+        last_day = calendar.monthrange(year, month)[1]
+
+        date_filtered_df = load_accidents(
+            start_date=f"{year}-{month:02d}-01",
+            end_date=f"{year}-{month:02d}-{last_day:02d}",
+            date_filter_type=date_filter_type
+        )
+
+    # -----------------------------------------------------
+    # ⭐ 事故主表已經有了 → 取得 accident_id
+    # -----------------------------------------------------
+    acc_ids = date_filtered_df["accident_id"].tolist()
+
+    # -----------------------------------------------------
+    # ⭐ 撈人為因素（只撈主表 accident_id）
+    # -----------------------------------------------------
+    human_factors_df = load_human_factors(
+        columns="accident_id, cause_analysis_minor_primary",
+        accident_ids=acc_ids
+    )
+
+    # -----------------------------------------------------
+    # ⭐ 撈道路環境因素（只撈主表 accident_id）
+    # -----------------------------------------------------
+    road_factors_df = load_env_factors(
+        columns="accident_id, light_condition",
+        accident_ids=acc_ids
+    )
+
+    # -----------------------------------------------------
+    # ⭐ 後面你的圖表、敘述、AI 分析全部照舊使用 date_filtered_df
+    # -----------------------------------------------------
+    filters = {
+        "city": selected_city,
+        "market": selected_market,
+        "filter_type": date_filter_type,
+        **date_info
+    }
+
+>>>>>>> Tom
     # -----------------------------------------------------
     # V2 洞察（generate_insight）
     # -----------------------------------------------------
@@ -103,7 +216,10 @@ def act2_render():
     
     st.markdown("""<div style="height: 40px;"></div>""", unsafe_allow_html=True)
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> Tom
     # -----------------------------------------------------
     # 3. 正文敘述
     # -----------------------------------------------------
@@ -170,6 +286,7 @@ def act2_render():
 """, unsafe_allow_html=True)
     
     # -----------------------------------------------------
+<<<<<<< HEAD
     # 夜市相關 — 群聚圖 (Cluster Map) ：白天 / 夜間
     # -----------------------------------------------------
     
@@ -306,11 +423,21 @@ def act2_render():
         f"""
         <h3 style='font-size:25px; font-weight:600; margin-bottom:10px;'>
             🎬 {selected_market} ｜ 長期 24 小時事故熱力動畫（跨年度時段）
+=======
+    # 夜市事故群聚圖（最佳化版本）
+    # -----------------------------------------------------
+
+    st.markdown(
+        f"""
+        <h3 style='font-size:25px; font-weight:600; margin-bottom:10px;'>
+            📍 {selected_market} ｜ 事故群聚地圖（可切換圖層）
+>>>>>>> Tom
         </h3>
         """,
         unsafe_allow_html=True
     )
 
+<<<<<<< HEAD
     # 取得夜市資料
     current_nm = nm_df[nm_df["nightmarket_name"] == selected_market].iloc[0]
 
@@ -394,6 +521,22 @@ def act2_render():
         html(m._repr_html_(), height=420)
 
     st.markdown(""" *** """)
+=======
+    cluster_mode = st.selectbox("", ["☀️ 白天事故群聚", "🌙 夜間事故群聚"])
+
+    # ⭐ 呼叫新的 build_map_cluster（專門給 act2）
+    m = build_map_cluster(
+        selected_market=selected_market,
+        date_filtered_df=date_filtered_df,
+        nm_df=nm_df,
+        cluster_mode=cluster_mode
+    )
+
+    st_folium(m, width=700, height=450, returned_objects=[])
+    
+    st.markdown(""" *** """)
+
+>>>>>>> Tom
     st.subheader(f" 事故相關因素 ")
     st.markdown("""
 <hr style="
@@ -403,6 +546,7 @@ def act2_render():
     border-radius: 2px;
 ">
 """, unsafe_allow_html=True)
+<<<<<<< HEAD
 
 
     # -----------------------------------------------------
@@ -742,10 +886,32 @@ def act2_render():
     st.markdown(""" *** """)
 
 
+=======
+    
+    # -----------------------------------------------------
+    # 事故原因分析（玫瑰圖/長條圖）
+    # -----------------------------------------------------
+    build_cause_charts(
+        selected_market=selected_market,
+        date_filtered_df=date_filtered_df,
+        nm_df=nm_df,
+        human_factors_df=human_factors_df
+    )
+    
+    # -----------------------------------------------------
+    # 雨天 vs 非雨天事故比較
+    # -----------------------------------------------------
+    build_rain_comparison_charts(
+        selected_market=selected_market,
+        date_filtered_df=date_filtered_df,
+        nm_df=nm_df
+    )
+>>>>>>> Tom
             
     # -----------------------------------------------------
     # 夜市營業時段｜天氣風險雷達圖
     # -----------------------------------------------------
+<<<<<<< HEAD
 
     st.subheader(f"🧭{selected_market}｜夜市營業時段天氣風險雷達圖")
 
@@ -858,6 +1024,15 @@ def act2_render():
     )
     st.markdown(""" *** """)
 
+=======
+    build_weather_radar_chart(
+        selected_market=selected_market,
+        date_filtered_df=date_filtered_df,
+        nm_df=nm_df,
+        road_factors_df=road_factors_df
+    )
+
+>>>>>>> Tom
     # -----------------------------------------------------
     # ⭐ 第二章 AI 所需資訊 (自動化 summary_text)
     # -----------------------------------------------------
@@ -912,4 +1087,85 @@ def act2_render():
         "templates": templates,
     }
 
+<<<<<<< HEAD
+=======
+    
+    # -----------------------------------------------------
+    # 夜市相關 — 長期 24 小時事故動畫（太耗資源）
+    # -----------------------------------------------------
+
+    # st.markdown(
+    #     f"""
+    #     <h3 style='font-size:25px; font-weight:600; margin-bottom:10px;'>
+    #         🎬 {selected_market} ｜ 長期 24 小時事故熱力動畫（跨年度時段）
+    #     </h3>
+    #     """,
+    #     unsafe_allow_html=True
+    # )
+
+    # # 夜市資料
+    # nm = nm_df[nm_df["nightmarket_name"] == selected_market].iloc[0]
+    # center_lat, center_lon = nm["nightmarket_latitude"], nm["nightmarket_longitude"]
+
+    # ne_lat, ne_lon = nm["nightmarket_northeast_latitude"], nm["nightmarket_northeast_longitude"]
+    # sw_lat, sw_lon = nm["nightmarket_southwest_latitude"], nm["nightmarket_southwest_longitude"]
+
+    # -----------------------------------------------------
+    # ⭐ 1. 夜市範圍事故（只做一次）
+    # -----------------------------------------------------
+    # nm_acc = date_filtered_df[
+    #     (date_filtered_df["latitude"] >= sw_lat) &
+    #     (date_filtered_df["latitude"] <= ne_lat) &
+    #     (date_filtered_df["longitude"] >= sw_lon) &
+    #     (date_filtered_df["longitude"] <= ne_lon)
+    # ].copy()
+
+    # -----------------------------------------------------
+    # ⭐ 2. 時間處理（只做一次）
+    # -----------------------------------------------------
+    # nm_acc["accident_datetime"] = pd.to_datetime(nm_acc["accident_datetime"], errors="coerce")
+    # nm_acc["hour"] = nm_acc["accident_datetime"].dt.hour
+
+    # -----------------------------------------------------
+    # ⭐ 3. HeatMapWithTime 資料（不再用 iterrows）
+    # -----------------------------------------------------
+    # heat_data = [
+    #     nm_acc[nm_acc["hour"] == h][["latitude", "longitude"]].values.tolist()
+    #     for h in range(24)
+    # ]
+    # time_index = [f"{h:02d}:00" for h in range(24)]
+
+    # -----------------------------------------------------
+    # ⭐ 4. 地圖
+    # -----------------------------------------------------
+    # m = folium.Map(
+    #     location=[center_lat, center_lon],
+    #     zoom_start=16.48,
+    #     tiles="OpenStreetMap"
+    # )
+
+    # 夜市框線
+    # folium.Rectangle(
+    #     bounds=[[sw_lat, sw_lon], [ne_lat, ne_lon]],
+    #     color="#FF8C42",
+    #     weight=2,
+    #     fill=True,
+    #     fill_opacity=0.15
+    # ).add_to(m)
+
+    # HeatMapWithTime
+    # HeatMapWithTime(
+    #     heat_data,
+    #     index=time_index,
+    #     radius=18,
+    #     auto_play=True,
+    #     max_opacity=0.8
+    # ).add_to(m)
+
+    # # 顯示
+    # left, center, right = st.columns([0.01, 100, 37])
+    # with center:
+    #     html(m._repr_html_(), height=420)
+
+>>>>>>> Tom
 

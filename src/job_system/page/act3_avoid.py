@@ -2,6 +2,7 @@ from utils.sidebar import sidebar_filters
 from folium.plugins import HeatMap
 from streamlit_folium import st_folium
 from folium.features import DivIcon
+<<<<<<< HEAD
 from data_loader import load_night_markets,load_accidents,load_env_factors,load_human_factors
 import numpy as np
 import random
@@ -11,12 +12,26 @@ import pandas as pd
 import utils.market_tools as mt
 import requests
 import polyline
+=======
+from data_loader import load_night_markets, load_env_factors, load_human_factors, load_accidents
+import numpy as np
+import streamlit as st
+import pandas as pd
+import utils.market_tools as mt
+from folium.plugins import MarkerCluster
+import requests
+import polyline
+import calendar
+import random
+import folium
+>>>>>>> Tom
 
 # -----------------------------------------------------
 # nm_df (夜市資料) - DataFrame
 # -----------------------------------------------------
 nm_df = load_night_markets()
 
+<<<<<<< HEAD
 # -----------------------------------------------------
 # accidents_df 事故資料（事故主表）- DataFrame
 # -----------------------------------------------------
@@ -36,15 +51,27 @@ human_factors_df = load_human_factors(columns="accident_id, cause_analysis_major
 # -----------------------------------------------------
 road_factors_df = load_env_factors(columns="accident_id, road_surface_condition")
 
+=======
+>>>>>>> Tom
 
 # ---------------------------------------------------------
 # Act3 主頁面
 # ---------------------------------------------------------
 def act3_render():
 
+<<<<<<< HEAD
     # ⭐ 每次進入章節時清掉舊資料（避免AI詢問資料重複累積）
     if "page_data" in st.session_state:
         st.session_state["page_data"].clear()
+=======
+    if st.session_state.page != "行人看這裡":
+        return
+
+    # ⭐ 每次進入章節時清掉舊資料
+    if "page_data" in st.session_state:
+        st.session_state["page_data"].clear()
+
+>>>>>>> Tom
     # -----------------------------------------------------
     # 定義兩個函式給 sidebar_filters 使用
     # -----------------------------------------------------
@@ -53,6 +80,7 @@ def act3_render():
 
     def load_market_by_city(city):
         return nm_df[nm_df["nightmarket_city"] == city]["nightmarket_name"].tolist()
+<<<<<<< HEAD
     
     # -----------------------------------------------------
     # 篩選縣市、夜市、日期篩選資料和日期類型
@@ -71,6 +99,90 @@ def act3_render():
     "filter_type": date_filter_type,
     **date_info
 }
+=======
+
+    # -----------------------------------------------------
+    # ⭐ 取得 sidebar 的篩選結果
+    # -----------------------------------------------------
+    selected_city, selected_market, date_filter_type, date_info = sidebar_filters(
+        load_city_list,
+        load_market_by_city,
+    )
+
+    # -----------------------------------------------------
+    # ⭐ 查事故主表（智慧 LIMIT）
+    # -----------------------------------------------------
+    if date_filter_type == "月份":
+        year = date_info["year"]
+        month = date_info["month"]
+        last_day = calendar.monthrange(year, month)[1]
+
+        date_filtered_df = load_accidents(
+            start_date=f"{year}-{month:02d}-01",
+            end_date=f"{year}-{month:02d}-{last_day:02d}",
+            date_filter_type=date_filter_type
+        )
+
+    elif date_filter_type == "單一日期":
+        date = date_info["date"]
+        date_filtered_df = load_accidents(
+            start_date=date,
+            end_date=date,
+            date_filter_type=date_filter_type
+        )
+
+    elif date_filter_type == "日期區間（最新7天）":
+        start_date = date_info["start_date"]
+        end_date = date_info["end_date"]
+        date_filtered_df = load_accidents(
+            start_date=start_date,
+            end_date=end_date,
+            date_filter_type=date_filter_type
+        )
+
+    elif date_filter_type == "年份（選月份）":
+        year = date_info["year"]
+        month = date_info["month"]
+        last_day = calendar.monthrange(year, month)[1]
+
+        date_filtered_df = load_accidents(
+            start_date=f"{year}-{month:02d}-01",
+            end_date=f"{year}-{month:02d}-{last_day:02d}",
+            date_filter_type=date_filter_type
+        )
+
+    # -----------------------------------------------------
+    # ⭐ 事故主表已經有了 → 取得 accident_id
+    # -----------------------------------------------------
+    acc_ids = date_filtered_df["accident_id"].tolist()
+
+    # -----------------------------------------------------
+    # ⭐ 撈人為因素（只撈主表 accident_id）
+    # -----------------------------------------------------
+    human_factors_df = load_human_factors(
+        columns="accident_id, cause_analysis_major_primary",
+        accident_ids=acc_ids
+    )
+
+    # -----------------------------------------------------
+    # ⭐ 撈道路環境因素（只撈主表 accident_id）
+    # -----------------------------------------------------
+    road_factors_df = load_env_factors(
+        columns="accident_id, road_surface_condition",
+        accident_ids=acc_ids
+    )
+
+    # -----------------------------------------------------
+    # ⭐ 後面你的圖表、敘述、AI 分析全部照舊使用 date_filtered_df
+    # -----------------------------------------------------
+    filters = {
+        "city": selected_city,
+        "market": selected_market,
+        "filter_type": date_filter_type,
+        **date_info
+    }
+
+>>>>>>> Tom
     # -----------------------------------------------------
     # 依照側邊欄選擇的夜市取得資料
     # -----------------------------------------------------
@@ -192,6 +304,7 @@ def act3_render():
     # 3. 正文敘述
     # -----------------------------------------------------
     st.markdown("""
+<<<<<<< HEAD
 <h2>
 行人看這裡：<span style="margin-right:10px;">避開<b style="color:red;">危險</b>？</span> 怎麼做？
 </h2>
@@ -207,6 +320,8 @@ def act3_render():
 """, unsafe_allow_html=True)
 
     st.markdown("""
+=======
+>>>>>>> Tom
 <h4>
 第三步：<b style="color:#f7c843;">How</b> — 那我該怎麼辦？ <span style="margin-right:10px;">數據</span>會建議
 </h4>
@@ -270,6 +385,7 @@ def act3_render():
     lat_bins = np.linspace(south, north, grid_size + 1)
     lon_bins = np.linspace(west, east, grid_size + 1)
 
+<<<<<<< HEAD
     date_filtered_df["lat_bin"] = pd.cut(date_filtered_df["latitude"], bins=lat_bins, labels=False, include_lowest=True)
     date_filtered_df["lon_bin"] = pd.cut(date_filtered_df["longitude"], bins=lon_bins, labels=False, include_lowest=True)
 
@@ -297,6 +413,31 @@ def act3_render():
             })
 
     grid_df = pd.DataFrame(grid_list)
+=======
+    # ⭐⭐ 效能提升：不修改原始 df
+    df = date_filtered_df.copy()
+
+    df["lat_bin"] = pd.cut(df["latitude"], bins=lat_bins, labels=False, include_lowest=True)
+    df["lon_bin"] = pd.cut(df["longitude"], bins=lon_bins, labels=False, include_lowest=True)
+    df["risk_score"] = df["death_count"] * 3 + df["injury_count"]
+
+    # ⭐⭐ 效能提升：一次 groupby（取代 9 次 DataFrame 篩選）
+    grid_df = (
+        df.groupby(["lat_bin", "lon_bin"])
+        .agg(score=("risk_score", "sum"),
+            accident_count=("accident_id", "count"))
+        .reset_index()
+    )
+
+    def score_to_color(score):
+        if score >= 6:
+            return "red"
+        elif score >= 3:
+            return "yellow"
+        return "green"
+
+    grid_df["color"] = grid_df["score"].apply(score_to_color)
+>>>>>>> Tom
 
     # ---------------------------------------------------------
     # 2. 畫底圖 + 夜市 bounding box
@@ -320,8 +461,13 @@ def act3_render():
     lon_step = (east - west) / grid_size
 
     for _, row in grid_df.iterrows():
+<<<<<<< HEAD
         i = row["grid_row"]
         j = row["grid_col"]
+=======
+        i = int(row["lat_bin"])
+        j = int(row["lon_bin"])
+>>>>>>> Tom
 
         south_i = south + i * lat_step
         north_i = south_i + lat_step
@@ -341,12 +487,17 @@ def act3_render():
     # ---------------------------------------------------------
     # 4. 畫事故熱區 HeatMap
     # ---------------------------------------------------------
+<<<<<<< HEAD
     heat_data = date_filtered_df[["latitude", "longitude"]].values.tolist()
+=======
+    heat_data = df[["latitude", "longitude"]].values.tolist()
+>>>>>>> Tom
     HeatMap(heat_data, radius=20, blur=15).add_to(m)
 
     # ---------------------------------------------------------
     # 4-1. 標記每個事故點（CircleMarker）
     # ---------------------------------------------------------
+<<<<<<< HEAD
     # for _,（忽略 index）
 
     # ⭐ 事故點（依死傷程度自動換顏色）
@@ -361,6 +512,17 @@ def act3_render():
             color = "#90CAF9"   # 無死傷（淺藍）
 
         # tooltip（合併你原本的資訊）
+=======
+    for _, row in df.iterrows():
+
+        if row["death_count"] > 0:
+            color = "#FF1744"
+        elif row["injury_count"] > 0:
+            color = "#0033cc"
+        else:
+            color = "#90CAF9"
+
+>>>>>>> Tom
         tooltip_text = (
             f"事故ID: {row['accident_id']}<br>"
             f"死傷: {row['death_count']}死 / {row['injury_count']}傷<br>"
@@ -377,11 +539,15 @@ def act3_render():
             tooltip=tooltip_text
         ).add_to(m)
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> Tom
     # ---------------------------------------------------------
     # 5. 推薦入口（最遠離事故點）
     # ---------------------------------------------------------
 
+<<<<<<< HEAD
     accidents_inside = date_filtered_df[
         (date_filtered_df["latitude"]  >= south) &
         (date_filtered_df["latitude"]  <= north) &
@@ -391,6 +557,26 @@ def act3_render():
 
     if len(accidents_inside) == 0:
         accidents_inside = date_filtered_df.copy()
+=======
+    accidents_inside = df[
+        (df["latitude"]  >= south) &
+        (df["latitude"]  <= north) &
+        (df["longitude"] >= west) &
+        (df["longitude"] <= east)
+    ]
+
+    if accidents_inside.empty:
+        accidents_inside = df.copy()
+
+    # ⭐⭐ 效能提升：向量化距離計算
+    acc_arr = accidents_inside[["latitude", "longitude"]].values
+
+    def min_dist_to_accident(point):
+        dlat = acc_arr[:, 0] - point[0]
+        dlon = acc_arr[:, 1] - point[1]
+        dist = np.sqrt(dlat*dlat + dlon*dlon)
+        return dist.min()
+>>>>>>> Tom
 
     north_mid = [north, (west + east) / 2]
     south_mid = [south, (west + east) / 2]
@@ -408,17 +594,21 @@ def act3_render():
         "西南角出口": [south, west],
     }
 
+<<<<<<< HEAD
     def min_dist_to_accident(point):
         return min([
             np.sqrt((point[0] - lat)**2 + (point[1] - lon)**2)
             for lat, lon in accidents_inside[["latitude", "longitude"]].values
         ])
 
+=======
+>>>>>>> Tom
     best_exit = max(candidates.items(), key=lambda x: min_dist_to_accident(x[1]))
     exit_name, exit_point = best_exit
 
     center_point = [nm_row["nightmarket_latitude"], nm_row["nightmarket_longitude"]]
 
+<<<<<<< HEAD
     # - 非「原始 Dijkstra」演算法，而是：
     # - Contraction Hierarchies（CH）
     # - A*（A-star）
@@ -426,6 +616,10 @@ def act3_render():
 
     # ---------------------------------------------------------
     # ⭐ 6. OSRM 真實道路路線 + 避開熱點的建議路線
+=======
+    # ---------------------------------------------------------
+    # ⭐ 6. OSRM 真實道路路線（取代直線） + 路線說明
+>>>>>>> Tom
     # ---------------------------------------------------------
 
     start = f"{center_point[1]},{center_point[0]}"
@@ -433,10 +627,19 @@ def act3_render():
 
     url = f"http://router.project-osrm.org/route/v1/foot/{start};{end}?overview=full&geometries=polyline&steps=true"
 
+<<<<<<< HEAD
     route_instructions = []  # 先給預設，避免失敗時沒變數
 
     try:
         res = requests.get(url).json()
+=======
+    route_instructions = []
+
+    try:
+        # ⭐⭐ 效能提升：加 timeout 避免卡死
+        res = requests.get(url, timeout=3).json()
+
+>>>>>>> Tom
         route = polyline.decode(res["routes"][0]["geometry"])
 
         folium.PolyLine(
@@ -446,10 +649,14 @@ def act3_render():
             opacity=1
         ).add_to(m)
 
+<<<<<<< HEAD
         # 解析 steps
         steps = res["routes"][0]["legs"][0]["steps"]
 
         # ⭐ 反轉 steps（讓導航從出口走到中心）
+=======
+        steps = res["routes"][0]["legs"][0]["steps"]
+>>>>>>> Tom
         steps = list(reversed(steps))
 
         def translate_maneuver(step, is_first, is_last):
@@ -457,6 +664,7 @@ def act3_render():
             t = m.get("type", "")
             mod = m.get("modifier", "")
 
+<<<<<<< HEAD
             # ⭐ 第一個步驟：從推薦入口開始
             if is_first:
                 return "從推薦入口開始步行"
@@ -466,6 +674,13 @@ def act3_render():
                 return "抵達夜市中心"
 
             # ⭐ 中間步驟
+=======
+            if is_first:
+                return "從推薦入口開始步行"
+            if is_last:
+                return "抵達夜市中心"
+
+>>>>>>> Tom
             if t == "turn":
                 if mod == "left":
                     return "左轉"
@@ -494,16 +709,23 @@ def act3_render():
             road = step["name"] if step["name"] != "" else "路線引導"
             dist = int(step["distance"])
 
+<<<<<<< HEAD
             # ⭐ 第一個步驟：不顯示距離
+=======
+>>>>>>> Tom
             if idx == 0:
                 route_instructions.append(f"{action}")
                 continue
 
+<<<<<<< HEAD
             # ⭐ 最後一步：不顯示距離
+=======
+>>>>>>> Tom
             if idx == len(steps) - 1:
                 route_instructions.append(f"{action}")
                 continue
 
+<<<<<<< HEAD
             # ⭐ 中間步驟：正常顯示距離
             route_instructions.append(f"{action}，沿著 **{road}** 前進 **{dist} 公尺**")
 
@@ -511,6 +733,11 @@ def act3_render():
     except Exception as e:
         print("OSRM 路線取得失敗：", e)
         # 如果 OSRM 失敗，退回直線，且不顯示路線說明
+=======
+            route_instructions.append(f"{action}，沿著 **{road}** 前進 **{dist} 公尺**")
+
+    except:
+>>>>>>> Tom
         folium.PolyLine(
             locations=[center_point, exit_point],
             color="blue",
@@ -518,7 +745,11 @@ def act3_render():
             opacity=1
         ).add_to(m)
         route_instructions = []
+<<<<<<< HEAD
         
+=======
+
+>>>>>>> Tom
     # ---------------------------------------------------------
     # ⭐ fit_bounds 使用四角（更穩定）
     # ---------------------------------------------------------
@@ -666,8 +897,14 @@ def act3_render():
         《 {i}. {inst} 》
     </div>
     </div>
+<<<<<<< HEAD
         """, unsafe_allow_html=True)
     st.markdown(""" *** """)            
+=======
+            """, unsafe_allow_html=True)
+
+    st.markdown(""" *** """)
+>>>>>>> Tom
     st.markdown("""
     <div style="
         width: 100%;

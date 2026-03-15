@@ -329,6 +329,26 @@ def generate_insight_V4(city_rank):
 
     return random.choice(templates)
 
+<<<<<<< HEAD
+=======
+    # -------------------------
+    # tooltip（滑過顯示）
+    # -------------------------
+def build_tooltip(df):
+    df = df.copy()
+    df["accident_datetime"] = pd.to_datetime(df["accident_datetime"], errors="coerce")
+
+    df["tooltip_text"] = df.apply(
+        lambda row: (
+            f"事故時間：{row['accident_datetime'].strftime('%Y-%m-%d %H:%M') if pd.notna(row['accident_datetime']) else '未知'}\n"
+            f"死亡：{int(row['death_count']) if pd.notna(row['death_count']) else 0} 人\n"
+            f"受傷：{int(row['injury_count']) if pd.notna(row['injury_count']) else 0} 人"
+        ),
+        axis=1
+    )
+
+    return df
+>>>>>>> Tom
 
 # ---------------------------------------------------------
 # 工具：解析夜市營業時段

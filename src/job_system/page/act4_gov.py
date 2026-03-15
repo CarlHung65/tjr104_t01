@@ -1,19 +1,31 @@
 from utils.sidebar import sidebar_filters
 from folium.plugins import HeatMap
 from streamlit_folium import st_folium
+<<<<<<< HEAD
 from data_loader import load_night_markets, load_accidents, load_env_factors
+=======
+from data_loader import load_night_markets, load_env_factors, load_accidents
+from utils.maps_tool import build_taiwan_density_map
+>>>>>>> Tom
 import pandas as pd
 import streamlit as st
 import utils.market_tools as mt
 import altair as alt
+<<<<<<< HEAD
 import random
 import folium
+=======
+import numpy as np
+import random
+import calendar
+>>>>>>> Tom
 
 # -----------------------------------------------------
 # nm_df (夜市資料) - DataFrame
 # -----------------------------------------------------
 nm_df = load_night_markets()
 
+<<<<<<< HEAD
 # -----------------------------------------------------
 # accidents_df 事故資料（事故主表）- DataFrame
 # -----------------------------------------------------
@@ -28,12 +40,21 @@ accidents_df["accident_hour"] = accidents_df["accident_datetime"].dt.hour
 # -----------------------------------------------------
 road_factors_df = load_env_factors(columns="accident_id, light_condition")
 
+=======
+>>>>>>> Tom
 # ---------------------------------------------------------
 # Act4 主頁面
 # ---------------------------------------------------------
 def act4_render():
 
+<<<<<<< HEAD
     # ⭐ 每次進入章節時清掉舊資料（避免AI詢問資料重複累積）
+=======
+    if st.session_state.page != "政府幫幫忙":
+        return
+
+    # ⭐ 每次進入章節時清掉舊資料
+>>>>>>> Tom
     if "page_data" in st.session_state:
         st.session_state["page_data"].clear()
 
@@ -45,6 +66,7 @@ def act4_render():
 
     def load_market_by_city(city):
         return nm_df[nm_df["nightmarket_city"] == city]["nightmarket_name"].tolist()
+<<<<<<< HEAD
     
 
     # -----------------------------------------------------
@@ -71,6 +93,89 @@ def act4_render():
     road_factors_df,
     on="accident_id",
     how="left"
+=======
+
+    # -----------------------------------------------------
+    # ⭐ 取得 sidebar 的篩選結果
+    # -----------------------------------------------------
+    selected_city, selected_market, date_filter_type, date_info = sidebar_filters(
+        load_city_list,
+        load_market_by_city,
+    )
+
+    # -----------------------------------------------------
+    # ⭐ 查事故主表（智慧 LIMIT）
+    # -----------------------------------------------------
+    if date_filter_type == "月份":
+        year = date_info["year"]
+        month = date_info["month"]
+        last_day = calendar.monthrange(year, month)[1]
+
+        date_filtered_df = load_accidents(
+            start_date=f"{year}-{month:02d}-01",
+            end_date=f"{year}-{month:02d}-{last_day:02d}",
+            date_filter_type=date_filter_type
+        )
+
+    elif date_filter_type == "單一日期":
+        date = date_info["date"]
+        date_filtered_df = load_accidents(
+            start_date=date,
+            end_date=date,
+            date_filter_type=date_filter_type
+        )
+
+    elif date_filter_type == "日期區間（最新7天）":
+        start_date = date_info["start_date"]
+        end_date = date_info["end_date"]
+        date_filtered_df = load_accidents(
+            start_date=start_date,
+            end_date=end_date,
+            date_filter_type=date_filter_type
+        )
+
+    elif date_filter_type == "年份（選月份）":
+        year = date_info["year"]
+        month = date_info["month"]
+        last_day = calendar.monthrange(year, month)[1]
+
+        date_filtered_df = load_accidents(
+            start_date=f"{year}-{month:02d}-01",
+            end_date=f"{year}-{month:02d}-{last_day:02d}",
+            date_filter_type=date_filter_type
+        )
+
+    # -----------------------------------------------------
+    # ⭐ 事故主表已經有了 → 取得 accident_id
+    # -----------------------------------------------------
+    acc_ids = date_filtered_df["accident_id"].tolist()
+
+    # -----------------------------------------------------
+    # ⭐ 撈道路環境因素（只撈主表 accident_id）
+    # -----------------------------------------------------
+    road_factors_df = load_env_factors(
+        columns="accident_id, light_condition",
+        accident_ids=acc_ids
+    )
+
+    # -----------------------------------------------------
+    # ⭐ 後面你的圖表、敘述、AI 分析全部照舊使用 date_filtered_df
+    # -----------------------------------------------------
+    filters = {
+        "city": selected_city,
+        "market": selected_market,
+        "filter_type": date_filter_type,
+        **date_info
+    }
+
+    # -----------------------------------------------------
+    # ⭐ 導入 light_condition（你原本的邏輯）
+    # -----------------------------------------------------
+    date_filtered_df = date_filtered_df.merge(
+        road_factors_df,
+        on="accident_id",
+        how="left"
+>>>>>>> Tom
     )
 
     # -----------------------------
@@ -259,6 +364,7 @@ def act4_render():
 "></div>
 """, unsafe_allow_html=True)
     
+<<<<<<< HEAD
     # 台灣中心點（台中）
     taiwan_center = [23.7, 120.97]
 
@@ -284,6 +390,12 @@ def act4_render():
 
     st_folium(m, width=700, height=450)
 
+=======
+    m = build_taiwan_density_map(date_filtered_df)
+    st_folium(m, width=700, height=450)
+
+
+>>>>>>> Tom
     st.markdown(""" *** """)
 
     # -----------------------------------------------------
@@ -321,13 +433,18 @@ def act4_render():
     st.markdown("""***""")
 
     # -----------------------------------------------------
+<<<<<<< HEAD
     # 1. 計算每個夜市的 PDI
+=======
+    # ⭐ 1. 高效能 PDI 計算（向量化 + 空間匹配）
+>>>>>>> Tom
     # -----------------------------------------------------
     WEIGHT_DEATH = 5
     WEIGHT_INJURY = 2
     WEIGHT_OPEN = 3
     WEIGHT_CLOSE = 1
 
+<<<<<<< HEAD
     date_filtered_df["accident_datetime"] = pd.to_datetime(date_filtered_df["accident_datetime"])
 
     pdi_rows = []
@@ -370,6 +487,61 @@ def act4_render():
     nm_df["nightmarket_name"] = nm_df["nightmarket_name"].str.strip()
 
     # 合併城市資訊
+=======
+    df = date_filtered_df.copy()
+    df["accident_datetime"] = pd.to_datetime(df["accident_datetime"])
+    df["hour"] = df["accident_datetime"].dt.hour
+
+    df["severity"] = df["death_count"] * WEIGHT_DEATH + df["injury_count"] * WEIGHT_INJURY
+    df["is_open"] = df["hour"].between(17, 23)
+    df["weight"] = np.where(df["is_open"], WEIGHT_OPEN, WEIGHT_CLOSE)
+    df["pdi"] = df["severity"] * df["weight"]
+
+    # ⭐ 空間匹配（一次性）
+    def match_nightmarket_fast(df, nm_df):
+        nm_df = nm_df.copy()
+        nm_df["id"] = nm_df.index
+
+        boxes = nm_df[[
+            "nightmarket_southwest_latitude",
+            "nightmarket_northeast_latitude",
+            "nightmarket_southwest_longitude",
+            "nightmarket_northeast_longitude",
+        ]].values
+
+        acc_lat = df["latitude"].values
+        acc_lon = df["longitude"].values
+
+        match = np.full(len(df), None, dtype=object)
+
+        for idx, (lat_min, lat_max, lon_min, lon_max) in enumerate(boxes):
+            inside = (
+                (acc_lat >= lat_min) &
+                (acc_lat <= lat_max) &
+                (acc_lon >= lon_min) &
+                (acc_lon <= lon_max)
+            )
+            match[inside] = nm_df.loc[idx, "nightmarket_name"]
+
+        return match
+
+    df["nightmarket_name"] = match_nightmarket_fast(df, nm_df)
+
+    # ⭐ groupby 計算夜市 PDI
+    pdi_raw = (
+        df.dropna(subset=["nightmarket_name"])
+        .groupby("nightmarket_name")
+        .agg(
+            accident_count=("accident_id", "count"),
+            pdi=("pdi", "sum")
+        )
+        .reset_index()
+    )
+
+    pdi_raw["nightmarket_name"] = pdi_raw["nightmarket_name"].str.strip()
+    nm_df["nightmarket_name"] = nm_df["nightmarket_name"].str.strip()
+
+>>>>>>> Tom
     pdi_raw = pdi_raw.merge(
         nm_df[["nightmarket_name", "nightmarket_city"]],
         on="nightmarket_name",
@@ -377,7 +549,11 @@ def act4_render():
     )
 
     # -----------------------------------------------------
+<<<<<<< HEAD
     # 2. 依照城市分組統計
+=======
+    # 2. 城市統計（UI 不動）
+>>>>>>> Tom
     # -----------------------------------------------------
     city_rank = pdi_raw.groupby("nightmarket_city").agg(
         夜市數量=("nightmarket_name", "count"),
@@ -386,11 +562,16 @@ def act4_render():
     ).reset_index()
 
     city_rank = city_rank.rename(columns={"nightmarket_city": "城市"})
+<<<<<<< HEAD
 
     # 平均危險程度
     city_rank["平均PDI"] = (city_rank["PDI總和"] / city_rank["夜市數量"]).round(1)
 
     # 危險等級
+=======
+    city_rank["平均PDI"] = (city_rank["PDI總和"] / city_rank["夜市數量"]).round(1)
+
+>>>>>>> Tom
     def danger_level(pdi):
         if pdi <= 10:
             return "🟢 安全"
@@ -403,6 +584,7 @@ def act4_render():
 
     city_rank["危險等級"] = city_rank["平均PDI"].apply(danger_level)
 
+<<<<<<< HEAD
     # -----------------------------------------------------
     # ⭐ 自動判斷台灣五大區域
     # -----------------------------------------------------
@@ -418,15 +600,29 @@ def act4_render():
 
         "宜蘭縣": "東部", "花蓮縣": "東部", "臺東縣": "東部",
 
+=======
+    region_map = {
+        "臺北市": "北部", "新北市": "北部", "基隆市": "北部",
+        "桃園市": "北部", "新竹市": "北部", "新竹縣": "北部",
+        "臺中市": "中部", "苗栗縣": "中部", "彰化縣": "中部",
+        "南投縣": "中部", "雲林縣": "中部",
+        "臺南市": "南部", "高雄市": "南部", "嘉義市": "南部",
+        "嘉義縣": "南部", "屏東縣": "南部",
+        "宜蘭縣": "東部", "花蓮縣": "東部", "臺東縣": "東部",
+>>>>>>> Tom
         "澎湖縣": "離島", "金門縣": "離島", "連江縣": "離島"
     }
 
     city_rank["區域"] = city_rank["城市"].map(region_map).fillna("其他")
+<<<<<<< HEAD
 
     # 調整欄位順序
     city_rank = city_rank[["區域", "城市", "夜市數量", "事故總數", "PDI總和", "平均PDI", "危險等級"]]
 
     # 排序
+=======
+    city_rank = city_rank[["區域", "城市", "夜市數量", "事故總數", "PDI總和", "平均PDI", "危險等級"]]
+>>>>>>> Tom
     city_rank = city_rank.sort_values("PDI總和", ascending=False).reset_index(drop=True)
 
     st.dataframe(city_rank, hide_index=True, use_container_width=True)
@@ -434,6 +630,7 @@ def act4_render():
     st.markdown("""***""")
 
     # -----------------------------------------------------
+<<<<<<< HEAD
     # 夜市事故密度與 PDI 排名
     # -----------------------------------------------------
 
@@ -460,6 +657,15 @@ def act4_render():
     city_accidents = date_filtered_df.dropna(subset=["nightmarket_name"])
 
     # 3. PDI 計算
+=======
+    # 夜市事故密度與 PDI 排名（依縣市）
+    # -----------------------------------------------------
+    city_nightmarkets = nm_df[nm_df["nightmarket_city"] == selected_city]
+
+    # ⭐ 高效能：使用前面 df 的 nightmarket_name
+    city_accidents = df[df["nightmarket_name"].isin(city_nightmarkets["nightmarket_name"])]
+
+>>>>>>> Tom
     pdi_raw = mt.calculate_pdi(city_accidents, nm_df)
 
     pdi_raw["nightmarket_name"] = pdi_raw["nightmarket_name"].str.strip()
@@ -477,14 +683,20 @@ def act4_render():
         how="left"
     )
 
+<<<<<<< HEAD
     # ⭐ 只保留該縣市的夜市
+=======
+>>>>>>> Tom
     pdi_rank = pdi_rank[
         pdi_rank["nightmarket_name"].isin(city_nightmarkets["nightmarket_name"].tolist())
     ]
 
     pdi_rank = pdi_rank.sort_values("pdi", ascending=False).reset_index(drop=True)
 
+<<<<<<< HEAD
     # 4. 呈現表格（用 pdi_rank）
+=======
+>>>>>>> Tom
     pdi_df = pdi_rank.copy()
     pdi_df["危險等級"] = pdi_df["pdi"].apply(mt.danger_level)
 
@@ -502,9 +714,15 @@ def act4_render():
     st.markdown("""
     <style>
     .yellow-text {
+<<<<<<< HEAD
         color: #FFD700;          /* 黃色 */
         font-weight: bold;       /* 粗體 */
         font-size: 20px;         /* 字體大小：你可以改成 18px、22px 等 */
+=======
+        color: #FFD700;
+        font-weight: bold;
+        font-size: 20px;
+>>>>>>> Tom
     }
     </style>
 
@@ -518,23 +736,40 @@ def act4_render():
     """, unsafe_allow_html=True)
 
     st.markdown("""***""")
+<<<<<<< HEAD
     
     # -----------------------------------------------------
     # 4. 高風險時段（使用 Altair）
     # -----------------------------------------------------
 
+=======
+
+    # -----------------------------------------------------
+    # 4. 高風險時段（使用 Altair）
+    # -----------------------------------------------------
+>>>>>>> Tom
     time_risk = None
     weather_risk = None
     light_risk = None
     pdi_df = None
+<<<<<<< HEAD
     city_rank = None
     
     st.subheader(f"📊 {selected_city}高風險時段分析")
+=======
+
+    st.subheader(f"📊 {selected_city} 高風險時段分析")
+>>>>>>> Tom
 
     if city_accidents.empty:
         st.info("⚠️ 此縣市在此期間沒有夜市事故，因此無法進行時段分析。")
     else:
+<<<<<<< HEAD
         city_accidents["accident_hour"] = city_accidents["accident_hour"].astype(int)
+=======
+        city_accidents = city_accidents.copy()
+        city_accidents["accident_hour"] = city_accidents["accident_datetime"].dt.hour
+>>>>>>> Tom
 
         time_risk = (
             city_accidents.groupby("accident_hour")
@@ -564,11 +799,15 @@ def act4_render():
     if city_accidents.empty:
         st.info("⚠️ 沒有事故資料，無法進行天氣風險分析。")
     else:
+<<<<<<< HEAD
         city_acc_ids = city_accidents["accident_id"].tolist()
 
         city_weather = date_filtered_df[
             date_filtered_df["accident_id"].isin(city_acc_ids)
         ]
+=======
+        city_weather = df[df["accident_id"].isin(city_accidents["accident_id"])]
+>>>>>>> Tom
 
         if city_weather.empty:
             st.info("⚠️ 此縣市在此期間沒有天氣相關事故資料。")
@@ -615,6 +854,11 @@ def act4_render():
 
         st.dataframe(light_risk, hide_index=True)
 
+<<<<<<< HEAD
+=======
+
+
+>>>>>>> Tom
     # ============================
     # ⭐ 第四章 AI 所需資訊 (自動化 summary_text)
     # ============================
