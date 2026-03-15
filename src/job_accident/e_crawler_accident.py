@@ -35,7 +35,7 @@ def auto_scrape_and_download_old_data(page_url)->list:
     
     # find() 找尋第一個符合條件的標籤，我們利用 title 屬性精準定位下載按鈕
     #這就是你的眼睛。它在 HTML 樹裡找 <a>（超連結標籤），而且精確鎖定那個 title 叫做「CSV 下載檔案」的按鈕
-    csv_link_tag = soup.find('a', title="CSV下載檔案")
+    csv_link_tag = soup.find('a', title=re.compile("下載檔案"))
 
     if not csv_link_tag:
         print("錯誤：找不到下載標籤！")
