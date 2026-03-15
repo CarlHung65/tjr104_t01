@@ -41,7 +41,7 @@ def accident_weather_pipeline():
             batches = prep_batch_plan(df, year, batch_size=50)
             # MappedOperator
             craw_done = e_crawler_weatherapi.partial(
-                target_year=year).expand(batch_no=batches)
+                target_year=year).expand(batch_id=batches)
 
             report_done = l_summary_report(target_year=year,
                                            upstream=craw_done)
