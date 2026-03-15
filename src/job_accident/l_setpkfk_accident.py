@@ -117,3 +117,48 @@ def setting_new_pkfk(engine):
                     print(f"❌ {table} FK 設定失敗: {e}")
             else:
                 print(f"✅ {table} FK 已存在，跳過。")
+
+# ------------------------------------------------------------------
+# 設定TMP pk fk
+# ------------------------------------------------------------------
+def setting_TMP_pkfk(engine):
+    if engine is None: return
+    
+    #sub_tables = ['accident_sq2_sub']
+    sub_tables = ['accident_sq1_env_tmp', 'accident_sq1_human_tmp', 'accident_sq1_process_tmp', 'accident_sq1_res_tmp',
+                  'accident_sq2_human_tmp', 'accident_sq2_process_tmp', 'accident_sq2_res_tmp']    
+    with engine.connect() as conn:   
+        check_pk = conn.execute(text("""
+                SELECT count(*) FROM information_schema.TABLE_CONSTRAINTS 
+                WHERE CONSTRAINT_SCHEMA = DATABASE() 
+                AND TABLE_NAME = 'accident_sq1_main_tmp' 
+                AND CONSTRAINT_TYPE = 'PRIMARY KEY'
+                """)).scalar()
+
+        if check_pk == 0:
+            try:
+                conn.execute(text("ALTER TABLE accident_sq1_main_tmp MODIFY COLUMN accident_id VARCHAR(16) NOT NULL"))
+                conn.execute(text("ALTER TABLE accident_sq1_main_tmp ADD PRIMARY KEY (accident_id)"))
+                conn.commit() # 確保執行成功
+                print("MySQL Primary Key 設定完成！")
+            except Exception as e:
+                print(f"PK 可能已存在或設定失敗: {e}")
+            for table in sub_tables:
+                try:
+                    print(f"正在為 {table} 設定外鍵...")
+                    # 統一修改欄位屬性
+                    conn.execute(text(f"ALTER TABLE {table} MODIFY COLUMN accident_id VARCHAR(16) NOT NULL"))
+                    # 統一建立 FK 連結到主表
+                    conn.execute(text(f"""
+                        ALTER TABLE {table} 
+                        ADD CONSTRAINT fk_{table}_main 
+                        FOREIGN KEY (accident_id) 
+                        REFERENCES accident_sq1_main_tmp(accident_id)
+                        ON DELETE CASCADE
+                        """))
+                    conn.commit()
+                    print(f"{table} fk已設立")
+                except Exception as e:
+                        print(f"FK 可能已存在或設定失敗: {e}")
+        else:
+            print("✅ 資料庫結構PK/FK已存在,無需重複設定。")
