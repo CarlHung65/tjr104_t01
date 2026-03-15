@@ -74,7 +74,37 @@ def load_to_new_GCP_mysql(main_dict, party_dict):
     except Exception as e:
         print(f"匯入失敗: {e}")
         return None
+#----------------------------------------------------------------
+# 匯入 TMP table 
+# ------------------------------------------------------------------
+def load_to_GCP_mysql_tmp_table(main_dict, party_dict):
+    print(f"--- 階段三：匯入 gcp MySQL ---")
+    engine = create_engine(GCP_DB_URL,pool_pre_ping=True,  # 核心：確保連線有效
+                           pool_recycle=300,                # 每 5 分鐘強制重整連線
+                           connect_args={'connect_timeout': 60})
+    
+        # 寫入主表
+    try:
+        with engine.begin() as connection:
+        # 使用 Transaction 確保資料完整性
+            main_dict['master'].to_sql('accident_sq1_main_tmp', con=connection, if_exists='append', index=False,dtype= MTD,chunksize=200)
+            main_dict['env'].to_sql('accident_sq1_env_tmp', con=connection, if_exists='append', index=False,dtype= ETD,chunksize=200)
+            main_dict['human'].to_sql('accident_sq1_human_tmp', con=connection, if_exists='append', index=False,dtype= HBD,chunksize=200)
+            main_dict['process'].to_sql('accident_sq1_process_tmp', con=connection, if_exists='append', index=False,dtype= EPPOD1,chunksize=200)
+            main_dict['result'].to_sql('accident_sq1_res_tmp', con=connection, if_exists='append', index=False,dtype= ERD,chunksize=200)
 
+        # 寫入細節表
+
+            party_dict['human'].to_sql('accident_sq2_human_tmp', con=connection, if_exists='append', index=False,dtype= HBD,chunksize=200)
+            party_dict['process'].to_sql('accident_sq2_process_tmp', con=connection, if_exists='append', index=False,dtype= EPPOD2,chunksize=200)
+            party_dict['result'].to_sql('accident_sq2_res_tmp', con=connection, if_exists='append', index=False,dtype= ERD,chunksize=200)
+            #要加chunksize=200,不然上傳雲端會卡住(一次上傳500列資料)
+        print("所有資料已成功寫入資料庫！")
+        
+        return engine
+    except Exception as e:
+        print(f"匯入失敗: {e}")
+        return None
 #----------------------------------------------------------------
 # 匯入 近年資料 gcp mysql 含比較上一筆資料
 # ------------------------------------------------------------------
