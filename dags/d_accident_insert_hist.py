@@ -12,7 +12,7 @@ from src.job_accident.e_crawler_accident import auto_scrape_and_download_old_dat
 from src.job_accident.t_dataclr_accident import car_crash_old_data_clean, transform_data_dict
 from src.job_accident.l_tomysqlgcp_accident import load_to_GCP_mysql_tmp_table
 from src.job_accident.l_setpkfk_accident import setting_TMP_pkfk
-from src.create_table.create_accident_table import ONE_PAGE_URL, GCP_DB_URL
+from src.create_table.create_accident_table import ONE_PAGE_URL, GCP_DB_URL,SAVE_OLD_DATA_DIR
 from sqlalchemy import create_engine
 
 default_args = {
@@ -38,46 +38,13 @@ with DAG(
 
     @task
     def extract_and_transform():
+        engine = create_engine(GCP_DB_URL)
+        files = os.listdir(SAVE_OLD_DATA_DIR) if os.path.exists(SAVE_OLD_DATA_DIR) else []
         """任務 1: 爬取與清洗數據"""
         print(f"開始抓取來源: {ONE_PAGE_URL}")
-        old_data = auto_scrape_and_download_old_data(ONE_PAGE_URL)
-        trans_data = transform_data_dict(old_data)
-        cleaned_data = car_crash_old_data_clean(trans_data)
-        
-        # 為了節省記憶體，我們回傳清理後的內容給下一個任務
-        # 注意：大型 DataFrame 建議存成臨時 CSV 或 Parquet，這裡我們先採記憶體傳遞
-        return {
-            'main': cleaned_data['main'].to_json(),
-            'party': cleaned_data['party'].to_json()
-        }
-
-    @task
-    def load_to_mysql(cleaned_json: dict):
-        """任務 2: 載入資料庫"""
-        import pandas as pd
-        import gc
-        
-        print("正在載入至 GCP MySQL TMP Table...")
-        clean1 = pd.read_json(cleaned_json['main'])
-        clean2 = pd.read_json(cleaned_json['party'])
-        
-        load_to_GCP_mysql_tmp_table(clean1, clean2)
-        
-        # 手動釋放資源
-        del clean1, clean2
-        gc.collect()
-        return "Load Success"
-
-    @task
-    def setup_relations():
-        """任務 3: 建立 PK/FK"""
-        print("開始統一建立資料庫關聯 (PK/FK)...")
-        engine = create_engine(GCP_DB_URL)
+        df_list = auto_scrape_and_download_old_data(ONE_PAGE_URL)
+        cleaned = car_crash_old_data_clean(transform_data_dict(df_list))
+        load_to_GCP_mysql_tmp_table(cleaned['main'], cleaned['party'])
         setting_TMP_pkfk(engine)
-        engine.dispose()
-        print("✨ 暫存環境建立完成。")
 
-    # --- 執行流程 ---
-    data = extract_and_transform()
-    load_status = load_to_mysql(data)
-    load_status >> setup_relations()
+    extract_and_transform()
