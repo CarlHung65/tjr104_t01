@@ -10,7 +10,7 @@ default_args = {
     'retry_delay': timedelta(minutes=5),}
 
 with DAG(
-    'update_frontend_db_consol',
+    'd_redis_frontend_db_consol',
     default_args=default_args,
     schedule='@monthly',
     catchup=False,
@@ -31,29 +31,29 @@ with DAG(
         DROP TABLE IF EXISTS accident_new_sq1_process_temp;
         DROP TABLE IF EXISTS accident_new_sq1_human_temp;
 
-        -- 合併 main 主表 (2021-2025 來自 test_accident, 2026 來自 car_accident)
+        -- 合併 main 主表 (2021-2025 + 2026 )
         CREATE TABLE accident_new_sq1_main_temp AS
         SELECT accident_id, latitude, longitude, death_count, injury_count, accident_datetime, weather_condition, accident_weekday 
-        FROM test_accident.accident_sq1_main WHERE YEAR(accident_datetime) BETWEEN 2021 AND 2025
+        FROM car_accident.accident_sq1_main WHERE YEAR(accident_datetime) BETWEEN 2021 AND 2025
         UNION ALL
         SELECT accident_id, latitude, longitude, death_count, injury_count, accident_datetime, weather_condition, accident_weekday 
         FROM car_accident.accident_new_sq1_main WHERE YEAR(accident_datetime) = 2026;
 
         -- 合併 env 環境因子表
         CREATE TABLE accident_new_sq1_env_temp AS
-        SELECT accident_id, light_condition, road_surface_condition FROM test_accident.accident_sq1_env
+        SELECT accident_id, light_condition, road_surface_condition FROM car_accident.accident_sq1_env
         UNION ALL
         SELECT accident_id, light_condition, road_surface_condition FROM car_accident.accident_new_sq1_env;
 
         -- 合併 process 人為因子表 (加入大類別欄位以供後續清洗)
         CREATE TABLE accident_new_sq1_process_temp AS
-        SELECT accident_id, cause_analysis_major_primary, cause_analysis_minor_primary, accident_type_major FROM test_accident.accident_sq1_process
+        SELECT accident_id, cause_analysis_major_primary, cause_analysis_minor_primary, accident_type_major FROM car_accident.accident_sq1_process
         UNION ALL
         SELECT accident_id, cause_analysis_major_primary, cause_analysis_minor_primary, accident_type_major FROM car_accident.accident_new_sq1_process;
 
         -- 合併 human 當事人表
         CREATE TABLE accident_new_sq1_human_temp AS
-        SELECT accident_id, party_action_major FROM test_accident.accident_sq1_human
+        SELECT accident_id, party_action_major FROM car_accident.accident_sq1_human
         UNION ALL
         SELECT accident_id, party_action_major FROM car_accident.accident_new_sq1_human;
         """)
@@ -154,7 +154,7 @@ with DAG(
             accident_new_sq1_process TO tbl_old_proc, accident_new_sq1_process_temp TO accident_new_sq1_process,
             accident_new_sq1_human TO tbl_old_human, accident_new_sq1_human_temp TO accident_new_sq1_human;
 
-        -- 刪除舊表 (打掃戰場)
+        -- 刪除舊表
         DROP TABLE IF EXISTS tbl_old_main, tbl_old_det, tbl_old_comp, tbl_old_ped, tbl_old_heat, tbl_old_env, tbl_old_proc, tbl_old_human;
         """)
         
