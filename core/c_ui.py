@@ -14,16 +14,17 @@ import uuid
 # ==========================================
 def render_sidebar(df_market):
     st.sidebar.markdown("### 🌐 語言切換 / Language")
+
     render_google_translator()
     # 側邊欄結構
     st.sidebar.markdown("## 數據揭密")
-    st.sidebar.page_link("r_app.py", label="🏠 首頁")
+    st.sidebar.page_link("r_app.py",  label="首頁", icon="🏠")
     st.sidebar.page_link("pages/v_act1_all_accident.py", label="全台夜市事故總體檢", icon="🗺️")
     st.sidebar.page_link("pages/v_act1_city_accident.py", label="縣市安全對標與趨勢", icon="🏙️")
     st.sidebar.page_link("pages/v_act1_single_accident.py", label="單一夜市 AI 深度診斷", icon="🔍")
     st.sidebar.markdown("## 化數據為行動")
-    st.sidebar.page_link("pages/v_act2_policy.py", label="政策成效即時監控", icon="⚖️")
-    st.sidebar.page_link("pages/v_act2_tableau.py", label="政策成效歷史數據 (Tableau)", icon="📈") 
+    st.sidebar.page_link("pages/v_act2_policy.py", label="夜市周遭 - 修法前後分析研究", icon="⚖️")
+    st.sidebar.page_link("pages/v_act2_tableau.py", label="全國區域 - 修法前後分析研究", icon="📈") 
     st.sidebar.page_link("pages/v_act2_avoid.py", label="友善步行導航路線", icon="🧭")
     st.sidebar.markdown("### 持續開發中")
     st.sidebar.page_link("pages/v_act3_chat.py", label="AI交通小幫手", icon="💬")
@@ -77,7 +78,7 @@ def build_map(is_overview, target_market, layers, dynamic_zoom, radius_m, traffi
 
     # [圖層 2] 夜市點位標示
     if layers.get('night_market'):
-        fg_m = folium.FeatureGroup(name="夜市")
+        fg_m = folium.FeatureGroup(name="夜市周圍邊界")
         if target_market is not None:
             # 針對單一夜市畫出星星 icon 與橘色分析範圍圓圈 (radius_m)
             folium.Marker([target_market['lat'], target_market['lon']], icon=folium.Icon(color='purple', icon='star', prefix='fa'), tooltip=target_market['MarketName']).add_to(fg_m)
@@ -94,7 +95,7 @@ def build_map(is_overview, target_market, layers, dynamic_zoom, radius_m, traffi
         df_other = df_local[df_local['death_count'] == 0]
 
         # 將一般事故放入專屬圖層
-        fg_other = folium.FeatureGroup(name="一般事故")
+        fg_other = folium.FeatureGroup(name="一般受傷事故")
         # 視覺意圖：效能防護機制
         # 如果單一區域事故 > 800 筆，為避免瀏覽器卡死，自動降級為熱力圖呈現；否則使用叢集點位
         if len(df_other) > 800:

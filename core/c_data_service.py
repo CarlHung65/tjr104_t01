@@ -38,11 +38,16 @@ def get_all_nightmarkets():
         df['MarketName'] = df['nightmarket_name']
         
         # 綁定四層級：
-        df['Region'] = df['nightmarket_region']             # 第一層：北部
-        df['City'] = df['nightmarket_city']                 # 第二層：臺北市
-        df['AdminDistrict'] = df['nightmarket_zipcode_name']# 第三層：中正區/大同區
+        df['Region'] = df['nightmarket_region'].replace({'東部': '東部與離島', '離島': '東部與離島'})             
+        df['City'] = df['nightmarket_city']                 
+        df['AdminDistrict'] = df['nightmarket_zipcode_name']
+        
+        # 處理附屬離島特例強制劃分
+        df.loc[df['AdminDistrict'].str.contains('琉球|蘭嶼|綠島', na=False), 'Region'] = '東部與離島'
+        df.loc[df['nightmarket_name'].str.contains('琉球|蘭嶼|綠島', na=False), 'Region'] = '東部與離島'
         
         # 向後相容舊程式碼
+        df['District'] = df['Region']
         df['District'] = df['Region'] 
         
         result = df.dropna(subset=['lat', 'lon']) # 剔除經緯度遺漏的髒資料
@@ -53,21 +58,8 @@ def get_all_nightmarkets():
         return pd.DataFrame()
 
 # =========================================================
-#  氣象測站
+#  氣象
 # =========================================================
-def get_all_stations():
-    cache_key = "weather:all_stations"
-    cached = get_cache(cache_key)
-    if cached is not None: return pd.DataFrame(cached)
-    engine = get_db_engine()
-    sql = "SELECT station_id, station_name, station_latitude_WGS84 as lat, station_longitude_WGS84 as lon FROM `test_weather`.`obs_stations`"
-    try:
-        with engine.connect() as conn:
-            df = pd.read_sql(sql, conn)
-        set_cache(cache_key, df.to_dict('records'), ttl=86400)
-        return df
-    except: return pd.DataFrame()
-
 # 計算邏輯：Haversine 半正矢公式
 # 目的：用來計算地球表面兩點之間的大圓距離
 # 使用 numpy 進行向量化運算，比寫 for 迴圈逐筆算快上幾百倍。 R=6371 為地球半徑(km)
@@ -78,14 +70,6 @@ def haversine_distance(lat1, lon1, lat2, lon2):
     dlambda = np.radians(lon2 - lon1)
     a = np.sin(dphi/2)**2 + np.cos(phi1) * np.cos(phi2) * np.sin(dlambda/2)**2
     return R * 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
-
-# 尋找離指定座標最近的氣象測站
-def find_nearest_station(target_lat, target_lon):
-    df_stations = get_all_stations()
-    if df_stations.empty: return None, 0
-    distances = haversine_distance(target_lat, target_lon, df_stations['lat'].values, df_stations['lon'].values)
-    min_idx = np.argmin(distances) # 取出距離陣列中最小值所在的索引
-    return df_stations.iloc[min_idx].to_dict(), distances[min_idx]
 
 # =========================================================
 #  交通熱力統計

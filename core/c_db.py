@@ -9,22 +9,28 @@ pd.set_option('display.max_columns', None)
 pd.set_option('display.width', 1000)
 load_dotenv()
 
-# 使用 SQLAlchemy 來管理 MySQL 的連線池 (Pool)，以應付高併發的查詢。
-# pool_recycle=300: 設定連線 300 秒後自動回收，避免 MySQL 預設的 wait_timeout 切斷閒置連線導致報錯。
+# 使用 SQLAlchemy 來管理 MySQL 的連線池 (Pool)，應付高併發的查詢
+# pool_recycle=300: 設定連線 300 秒後自動回收，避免 MySQL 預設的 wait_timeout 切斷閒置連線導致報錯
 def get_db_engine(db_name=None):
-    # 預設連線至fronted_db，查詢時會使用完整的"db"."table"路徑
-    passwd = quote_plus(os.getenv("MYSQL_PASSWORD"))    
+    db_user = os.getenv("DB_USER", "root")
+    db_pass = quote_plus(os.getenv("DB_PASS"))
+    
+    if os.getenv("AIRFLOW_HOME"):
+        db_host = os.getenv("DB_HOST")  # 如果在 Airflow (Docker 容器內) 執行，使用 .env 設定的服務名稱
+    else:
+        db_host = "127.0.0.1"           # 如果在 Streamlit (VM 宿主機) 執行，透過 127.0.0.1 連接 Docker 映射出來的 Port
 
-    # 如果有傳入 db_name 就用傳入的，沒有就用 .env 預設的
-    target_db = db_name or os.getenv("MYSQL_DATABASE")
+    db_port = os.getenv("DB_PORT")
+    # 如果有傳入 db_name 就用傳入的，沒有的話預設指向新版的 frontend_db_consol
+    target_db = db_name or "frontend_db_consol"
     target_db = quote_plus(target_db)
-    uri = f"mysql+pymysql://root:{passwd}@localhost:3308/{target_db}?charset=utf8mb4"
+    uri = f"mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{target_db}?charset=utf8mb4"
     return create_engine(uri, pool_pre_ping=True, pool_recycle=300)
 
 # ===================================================
 # 橋接組員資料
 # ===================================================
-DB_NIGHT_MARKET = "test_night_market"
+DB_NIGHT_MARKET = "car_accident"
 DB_ACCIDENT     = "frontend_db_consol"
 
 # ---------------------------------------------------
@@ -104,25 +110,3 @@ def _extracted_from_inspect_table_7(full_table_path, conn):
 
 if __name__ == "__main__":
     engine = get_db_engine()
-    
-    # 檢查 - 所有資料表型態與內容
-    target_tables = [
-        # test_accident 核心表 (10張)
-        ("test_accident", "accident_sq1_env"),
-        ("test_accident", "accident_sq1_human"),
-        ("test_accident", "accident_sq1_main"),
-        ("test_accident", "accident_sq1_process"),
-        ("test_accident", "accident_sq1_res"),
-        ("test_accident", "accident_sq2_env"),
-        ("test_accident", "accident_sq2_human"),
-        ("test_accident", "accident_sq2_process"),
-        ("test_accident", "accident_sq2_res"),
-        ("test_accident", "accident_sq2_sub"),
-        # test_night_market (1張)
-        ("test_night_market", "Night_market_merge"),
-        # test_weather (3張)
-        ("test_weather", "accident_nearby_obs_stn"),
-        ("test_weather", "obs_stations"),
-        ("test_weather", "weather_hourly_history")]
-    for db, table in target_tables:
-        inspect_table(engine, db, table)
