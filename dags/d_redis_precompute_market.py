@@ -19,7 +19,7 @@ def get_db_engine():
     db_pass = quote_plus(os.getenv("DB_PASS"))
     db_host = os.getenv("DB_HOST")
     db_port = os.getenv("DB_PORT")
-    target_db = "frontend_db_consol" # 要寫入的目標y資料庫
+    target_db = "frontend_db_consol"
     
     uri = f"mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{target_db}?charset=utf8mb4"
     return create_engine(uri, pool_pre_ping=True)
@@ -34,8 +34,8 @@ def load_night_markets():
 def get_redis_pool():
     # 在新 VM Docker 環境下，Host 直接使用服務名稱 "redis"
     host = os.getenv("REDIS_HOST", "redis")
-    port = int(os.getenv("REDIS_PORT", 6379))
-    password = os.getenv("REDIS_PASSWORD", "123456")
+    port = int(os.getenv("REDIS_PORT"))
+    password = os.getenv("REDIS_PASSWORD")
     return redis.ConnectionPool(
         host=host, port=port, password=password if password else None, decode_responses=False)
 
@@ -127,14 +127,24 @@ def precompute_market_stats():
                 "pdi": stats_board[name]["pdi"]
             })
             
-        # 效能保護：熱力圖抽樣
-        # 將全台熱點縮減至 8000 點以內，兼顧視覺分佈與前端瀏覽器的渲染極限
-        if len(heatmap_list) > 8000:
+        # ====================================================
+        # 效能保護：熱力圖抽樣與記憶體微縮
+        # ====================================================
+        # 將全台熱點縮減至 3500 點以內，兼顧視覺分佈並大幅減輕 Redis 記憶體壓力
+        if len(heatmap_list) > 3500:
             import random
-            heatmap_list = random.sample(heatmap_list, 8000)
+            heatmap_list = random.sample(heatmap_list, 3500)
+        
+        # 捨去不必要的浮點數長度：經緯度取 4 位 (精度約 11 公尺)、分數取 1 位，讓 JSON/Pickle 體積縮小至少一半
+        heatmap_list = [[round(p[0], 4), round(p[1], 4), round(p[2], 1)] for p in heatmap_list]
             
         # 算完一個年份，立刻存入 Redis
         key_suffix = str(target_year)
+        
+        # 【防呆機制】寫入前先主動刪除舊的 Key，強迫 Redis 提前釋放舊記憶體區塊，防止 OOM
+        r.delete(f"market:pdi_stats_cache_{key_suffix}")
+        r.delete(f"traffic:global_heatmap_cache_{key_suffix}")
+        
         r.set(f"market:pdi_stats_cache_{key_suffix}", pickle.dumps(final_results), ex=864000)
         r.set(f"traffic:global_heatmap_cache_{key_suffix}", pickle.dumps(heatmap_list), ex=864000)
         print(f"年份 {target_year} 已成功寫入 Redis！")
@@ -143,8 +153,7 @@ def precompute_market_stats():
     # 產出 Act 3 行人步行建議導航 (等年份跑完後，一次結算)
     # 分析單一夜市的各項風險特徵
     # ====================================================
-    # 重新宣告 Redis 連線，供 Act3 寫入使用
-    r = get_redis_client()
+
     print("各年份統計已完成。開始計算 Act3 行人步行建議導航...")
     final_act3_guides = {}
     for _, nm in nm_df.iterrows():
@@ -215,7 +224,7 @@ default_args = {
     'retries': 1,
     'retry_delay': timedelta(minutes=5),}
 
-with DAG('d_redis_nightmarket_data', default_args=default_args, schedule='0 4 * * *', catchup=False) as dag:
+with DAG('d_redis_nightmarket_data', default_args=default_args, schedule='0 4 1 * *', catchup=False) as dag:
     sync_task = PythonOperator(
         task_id='precompute_and_push_to_redis',
         python_callable=precompute_market_stats)

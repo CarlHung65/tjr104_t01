@@ -13,30 +13,34 @@ import itertools
 from dotenv import load_dotenv
 from airflow import DAG
 from airflow.decorators import task
+
 load_dotenv()
 
 # ==========================================
-# 1. 建立資料庫連線
+# 1. 建立 MySQL 資料庫連線
 # ==========================================
 def get_db_engine():
-    # 加入預設值作為保底，防止 .env 讀取失敗時引發 TypeError
-    db_user = os.getenv("DB_USER", "root")
-    db_pass = quote_plus(os.getenv("DB_PASS", "123456"))
-    db_host = os.getenv("DB_HOST", "mysql8")
-    db_port = os.getenv("DB_PORT", "3306")
+    db_user = os.getenv("DB_USER")
+    db_pass = quote_plus(os.getenv("DB_PASS"))
+    db_host = os.getenv("DB_HOST")
+    db_port = os.getenv("DB_PORT")
     target_db = "frontend_db_consol"
     
+    # 組裝連線字串，pool_pre_ping=True 可自動檢查連線是否有效，防止斷線報錯
     uri = f"mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{target_db}?charset=utf8mb4"
     return create_engine(uri, pool_pre_ping=True)
 
 # ==========================================
-# 2. Redis 連線設定 (連線池架構)
+# 2. 建立 Redis 快取連線 (連線池架構)
 # ==========================================
 def get_redis_pool():
-    # 在 Docker 內部使用服務名稱 "redis" 互相通訊
+    # 在 Docker 內部使用服務名稱 "redis" 作為 Host 互相通訊
     host = os.getenv("REDIS_HOST", "redis")
-    port = int(os.getenv("REDIS_PORT", 6379))
-    password = os.getenv("REDIS_PASSWORD", "123456")
+    port = int(os.getenv("REDIS_PORT"))
+    password = os.getenv("REDIS_PASSWORD")
+    
+    # 建立 ConnectionPool (連線池)
+    # 好處：後續平行運算取用時能減少重複建立連線的開銷，避免佔用過多系統資源
     return redis.ConnectionPool(
         host=host, port=port, password=password if password else None, decode_responses=False)
 
@@ -45,14 +49,12 @@ REDIS_POOL = get_redis_pool()
 
 def set_cache(key, value, ttl=864000):
     try:
+        # 每次寫入都從共用的 REDIS_POOL 拿一條連線來用
         r = redis.Redis(connection_pool=REDIS_POOL)
+        # 使用 pickle.dumps 將 Python 物件打包成二進位格式存入 Redis，ttl 預設保留 10 天
         r.setex(key, ttl, pickle.dumps(value))
     except Exception as e:
         print(f"Redis 寫入失敗: {key}, 錯誤: {e}")
-
-def get_empty_result():
-    return pd.DataFrame()
-
 # ==========================================
 # 3. Airflow DAG 定義區塊
 # ==========================================
@@ -72,31 +74,14 @@ with DAG(
     tags=['dashboard', 'redis', 'parallel'],) as dag:
 
     # ----------------------------------------------------------------
-    # Task 1: 計算全台各年總事故量 (支援稽核總表 範圍 A)
-    # 直接在 MySQL 中進行聚合，速度最快，不佔用 Airflow 記憶體
-    # ----------------------------------------------------------------
-    @task
-    def precompute_national_yearly_totals():
-        engine = get_db_engine()
-        sql = """
-        SELECT Year, COUNT(accident_id) as total_count 
-        FROM frontend_db_consol.tbl_accident_analysis_final 
-        GROUP BY Year
-        """
-        try:
-            df_totals = pd.read_sql(sql, engine)
-            set_cache("market:audit_national_yearly", df_totals)
-            print(f"✅ 全台年度總表 (範圍 A) 計算完成，共 {df_totals['total_count'].sum()} 筆。")
-        except Exception as e:
-            print(f"全台年度總表計算失敗: {e}")
-
-    # ----------------------------------------------------------------
-    # Task 2: 抓取清單，使用「寄物櫃模式」儲存避開 XCom 上限
+    # Task 1: 抓取清單，使用「寄物櫃模式」儲存避開 XCom 上限
+    # Airflow 的 Task 之間透過 XCom 傳遞資料，但 XCom 有容量限制
+    # 這裡實作「寄物櫃模式」：將龐大的夜市分頁名單(數萬字元)存進 Redis(置物櫃)
+    # Task1 只把輕量的 "Redis Key(號碼牌)" 透過 XCom 交給 Task2，避開限制
     # ----------------------------------------------------------------
     @task
     def fetch_and_split_markets() -> list:
         engine = get_db_engine()
-        # 夜市清單已經移至 car_accident 庫中
         sql_markets = "SELECT * FROM `car_accident`.`Night_market_merge`"
         try:
             with engine.connect() as conn:
@@ -123,12 +108,12 @@ with DAG(
                     "w_lon": float(row.get('nightmarket_southwest_longitude', lon - 0.005))
                 })
         
-        # 將全台約 300 個夜市切成 10 個批次 (Batch)，準備交給平行運算
+        # 將全台 300 個夜市切成 10 個批次
         num_batches = 10
         chunk_size = math.ceil(len(valid_markets) / num_batches)
         batches = [valid_markets[i:i + chunk_size] for i in range(0, len(valid_markets), chunk_size)]
         
-        # 將龐大資料存入 Redis 置物櫃，只產生極輕量的 String 號碼牌供 XCom 傳遞
+        # 將龐大資料存入 Redis，只產生極輕量的 String 號碼牌
         r = redis.Redis(connection_pool=REDIS_POOL)
         run_uuid = str(uuid.uuid4())
         batch_keys = []
@@ -138,15 +123,17 @@ with DAG(
             r.setex(key, 86400, pickle.dumps(batch)) # 號碼牌保留 24 小時
             batch_keys.append(key)
             
-        print(f"已生成 {len(batch_keys)} 張 Redis 號碼牌。")
+        print(f"已生成 {len(batch_keys)} 張 Redis號碼牌。")
+        # 回傳的只會是 ['xcom_claim_check:...', ...] 這樣短字串陣列，解決 XCom 爆表問題
         return batch_keys
 
     # ----------------------------------------------------------------
-    # Task 3: 憑「號碼牌」領取批次，執行平行運算 (空間過濾與快取建立)
-    # 此 Task 會被 Airflow 的 .expand() 動態擴展為多個 Worker
+    # Task 2: 憑「號碼牌」領取批次，執行平行運算
+    # 此 Task 會被 Airflow 根據號碼牌的數量自動複製成多個平行的 Worker 同時開工，縮短整體執行時間
     # ----------------------------------------------------------------
     @task
     def process_market_batch(batch_key: str):
+        # Redis 提取真正的批次陣列資料
         r = redis.Redis(connection_pool=REDIS_POOL)
         data = r.get(batch_key)
         if not data:
@@ -155,7 +142,6 @@ with DAG(
         if not batch: return "本批次無資料"
 
         engine = get_db_engine()
-        # 統一維持預熱 3000m 作為最大容器，後端 API 讀取後再進行縮小過濾
         radius_list = [3000] 
         year_targets = ['all_sample']
 
@@ -163,7 +149,7 @@ with DAG(
             for market in batch:
                 lat, lon = market['lat'], market['lon']
                 
-                # 拉大範圍，用正方形 Bounding Box 向 MySQL 要資料 (3公里約為 3.0/111.0 度)
+                # 拉大範圍，用正方形 Bounding Box 向 MySQL 要資料
                 max_offset = 3.0 / 111.0 
                 params = {"min_lat": lat - max_offset, "max_lat": lat + max_offset, "min_lon": lon - max_offset, "max_lon": lon + max_offset}
                 sql_base = text("""
@@ -186,14 +172,15 @@ with DAG(
                     print(f"資料庫讀取失敗: {e}")
                     continue
 
+                # 準備不同半徑與年份的組合 (保留了擴充性)
                 for r_m, y_target in itertools.product(radius_list, year_targets):
                     r_km = r_m / 1000.0
                     cache_key = f"traffic:nearby_v12:{lat:.4f}_{lon:.4f}_{r_km:.1f}_{y_target}"
-                    
                     if df_base.empty:
                         set_cache(cache_key, get_empty_result())
                         continue
                         
+                    # 縮小過濾範圍
                     offset = r_km / 111.0
                     mask = (df_base['latitude'].between(lat - offset, lat + offset)) & (df_base['longitude'].between(lon - offset, lon + offset))
 
@@ -205,13 +192,14 @@ with DAG(
                         set_cache(cache_key, get_empty_result())
                         continue
                     
-                    # 丟掉不需要的欄位以節省 Redis 記憶體空間
+                    # 丟掉不要的欄位以節省 Redis 記憶體
+                    # 這裡存入的是 Pandas DataFrame
                     map_columns = [
                         'accident_id', 'accident_datetime', 'Year', 'Hour', 
                         'primary_cause', 'party_action', 'weather_condition', 
                         'light_condition', 'road_surface_condition', 
                         'latitude', 'longitude', 'death_count', 'injury_count',
-                        'accident_type_major', 'cause_analysis_major']
+                        'accident_type_major', 'cause_analysis_major', 'site_id' ]
                     valid_cols = [c for c in map_columns if c in df_target.columns]
             
                     set_cache(cache_key, df_target[valid_cols])
@@ -219,8 +207,7 @@ with DAG(
         return f"{batch_key} 處理完成"
 
     # ----------------------------------------------------------------
-    # Task 4: 憑所有號碼牌還原全台清單，聚合總表
-    # 包含去重邏輯，建立「範圍 B (全台夜市環境不重複事故總數)」
+    # Task 3: 憑所有號碼牌還原全台清單，聚合總表並產出 Audit 輕量報表
     # ----------------------------------------------------------------
     @task
     def aggregate_national_master(dependency_results, batch_keys: list):
@@ -236,7 +223,7 @@ with DAG(
         
         # 將剛剛存入 Redis 的各夜市子 DataFrame 讀出來，透過 Concat 聚合成全台大表
         for nm in all_markets:
-            lat, lon = nm['lat'], lon = nm['lon']
+            lat, lon = nm['lat'], nm['lon']
             key = f"traffic:nearby_v12:{lat:.4f}_{lon:.4f}_3.0_all_sample"
             data = r.get(key)
             
@@ -245,7 +232,7 @@ with DAG(
                 df = result[0] if isinstance(result, tuple) else result
                 
                 if isinstance(df, pd.DataFrame) and not df.empty:
-                    # Bounding Box 過濾，只保留真的在夜市方框內的事故
+                    # Bounding Box 過濾，只保留真的在夜市方框內 (約 500m) 的事故
                     mask = (df["latitude"].between(nm['s_lat'], nm['n_lat'])) & \
                            (df["longitude"].between(nm['w_lon'], nm['e_lon']))
                     df_strict = df[mask].copy()
@@ -260,36 +247,68 @@ with DAG(
         if all_dfs:
             final_df = pd.concat(all_dfs, ignore_index=True)
             
-            # === [新增] 去重處理 (支援稽核表範圍 B) ===
-            # 利用 accident_id 剔除因為夜市地理位置重疊而重複計算的事故
-            unique_national_accidents = final_df.drop_duplicates(subset=['accident_id'])
-            
             # 確保時間特徵完整
-            unique_national_accidents['accident_datetime'] = pd.to_datetime(unique_national_accidents['accident_datetime'])
-            if "Hour" not in unique_national_accidents.columns:
-                unique_national_accidents['Hour'] = unique_national_accidents['accident_datetime'].dt.hour
-            unique_national_accidents['Year'] = unique_national_accidents['accident_datetime'].dt.year
-            unique_national_accidents['Quarter'] = unique_national_accidents['accident_datetime'].dt.quarter
-            unique_national_accidents['Month'] = unique_national_accidents['accident_datetime'].dt.month
-            unique_national_accidents['Weekday'] = unique_national_accidents['accident_datetime'].dt.weekday + 1
+            final_df['accident_datetime'] = pd.to_datetime(final_df['accident_datetime'])
+            if "Hour" not in final_df.columns:
+                final_df['Hour'] = final_df['accident_datetime'].dt.hour
+            final_df['Year'] = final_df['accident_datetime'].dt.year
+            final_df['Quarter'] = final_df['accident_datetime'].dt.quarter
+            final_df['Month'] = final_df['accident_datetime'].dt.month
+            final_df['Weekday'] = final_df['accident_datetime'].dt.weekday + 1
             
             # === 處理歷史標籤漂移 (Label Drift) 清洗 ===
-            unique_national_accidents['accident_type_major'] = unique_national_accidents['accident_type_major'].replace('人與汽(機)車', '人與車')
-            unique_national_accidents['accident_type_major'] = unique_national_accidents['accident_type_major'].replace('汽(機車)本身', '車輛本身')
-            unique_national_accidents['cause_analysis_major'] = unique_national_accidents['cause_analysis_major'].replace('駕駛人', '駕駛者')
+            # 解決長時序資料的標準不一問題
+            # 由於警察局填表規範逐年改變，導致同樣的概念出現不同名詞。此處進行正規化統一
+            final_df['accident_type_major'] = final_df['accident_type_major'].replace('人與汽(機)車', '人與車')
+            final_df['accident_type_major'] = final_df['accident_type_major'].replace('汽(機車)本身', '車輛本身')
+            final_df['cause_analysis_major'] = final_df['cause_analysis_major'].replace('駕駛人', '駕駛者')
 
-            # === 依據 PDI 定義進行計算 ===
-            unique_national_accidents["weight"] = np.where((unique_national_accidents["Hour"] >= 17) | (unique_national_accidents["Hour"] == 0), 1.5, 1.0)
-            unique_national_accidents["severity"] = unique_national_accidents["death_count"] * 10 + unique_national_accidents["injury_count"] * 2
-            unique_national_accidents["pdi_score"] = unique_national_accidents["severity"] * unique_national_accidents["weight"]
+            # === 依據最新簡報定義 PDI ===
+            final_df["weight"] = np.where((final_df["Hour"] >= 17) | (final_df["Hour"] == 0), 1.5, 1.0)
+            final_df["severity"] = final_df["death_count"] * 10 + final_df["injury_count"] * 2
+            final_df["pdi_score"] = final_df["severity"] * final_df["weight"]
             
-            # 將去重後的乾淨總表存入 Redis
-            set_cache("market:national_master_df", unique_national_accidents, ttl=864000)
+            # 存入給其他圖表用的原始巨型 DataFrame
+            set_cache("market:national_master_df", final_df, ttl=864000)
+            print(f"✅ 全台夜市周邊總表聚合完成，共 {len(final_df)} 筆精準事故，已存入 Redis。")
+
+            # ========================================================
+            # 前端 Audit 儀表板設計的「輕量化數字」 
+            # 運算完全在記憶體中進行，產出極小的字典，不會增加 Redis 負擔
+            # ========================================================
             
-            # [新增] 額外存一個總量數字，讓稽核表不用下載整個 DataFrame 就能秒讀總數
-            set_cache("market:audit_nightmarket_total_count", len(unique_national_accidents))
+            # 1. 新增前端需要的「白天/夜間」時段標籤 (06-18為白天)
+            final_df['time_slot'] = final_df['Hour'].apply(lambda x: 'Day' if 6 <= x < 18 else 'Night')
+
+            # 定義共用的聚合函數 (只算總量與 PDI 總和)
+            def generate_stats(df_target, groupby_cols):
+                res = df_target.groupby(groupby_cols).agg(
+                    acc_count=('accident_id', 'count'), # 計算總事故數
+                    pdi_total=('pdi_score', 'sum')      # 加總剛算好的 PDI
+                ).reset_index()
+                return res.to_dict('records')
+
+            # 2. 巨觀統計 (Macro)：全台夜市周邊總計、各縣市夜市周邊總計
+            # 這裡的「全台」與「各縣市」是指「發生在所有夜市 500m 範圍內的加總」，不包含非夜市區域
+            taiwan_market_stats = generate_stats(final_df, ['Year', 'Quarter', 'Month', 'time_slot'])
+            city_market_stats = generate_stats(final_df, ['nightmarket_city', 'Year', 'Quarter', 'Month', 'time_slot'])
             
-            print(f"✅ 全台總表聚合完成，去重後共 {len(unique_national_accidents)} 筆獨立事故，已存入 Redis。")
+            macro_bundle = {
+                "taiwan_markets_total": taiwan_market_stats,
+                "city_markets_total": city_market_stats,
+                "updated_at": str(datetime.now())
+            }
+            # 將巨觀數字打包存入一個專屬的 Key
+            set_cache("traffic:stats:audit_macro", macro_bundle)
+
+            # 3. 微觀統計 (Micro)：單一特定夜市 500m 總計
+            # 將 300 個夜市分開存成各自的 Key，讓前端地圖點擊時可以「秒拉」資料
+            market_groups = final_df.groupby('nightmarket_name')
+            for m_name, m_df in market_groups:
+                m_stats = generate_stats(m_df, ['Year', 'Quarter', 'Month', 'time_slot'])
+                set_cache(f"traffic:stats:audit_market:{m_name}", m_stats)
+
+            print("✅ Audit 儀表板輕量化統計運算完成，已存入 Redis。")
             
             # 任務完成後，清空資料，釋放 Redis 寄物櫃空間
             for key in batch_keys:
@@ -300,7 +319,6 @@ with DAG(
     # ----------------------------------------------------------------
     # 4. 任務執行順序設定
     # ----------------------------------------------------------------
-    task_yearly = precompute_national_yearly_totals() # 獨立支線：全台母體計算
-    market_batch_keys = fetch_and_split_markets()     # 主線 1：發送號碼牌
-    process_tasks = process_market_batch.expand(batch_key=market_batch_keys) # 主線 2：動態擴展平行運算
-    aggregate_task = aggregate_national_master(process_tasks, market_batch_keys) # 主線 3：聚合與去重
+    market_batch_keys = fetch_and_split_markets() 
+    process_tasks = process_market_batch.expand(batch_key=market_batch_keys)  
+    aggregate_task = aggregate_national_master(process_tasks, market_batch_keys)
