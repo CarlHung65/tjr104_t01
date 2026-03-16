@@ -50,7 +50,7 @@ CREATE OR REPLACE VIEW v_sq1_main_human_process_grouped AS
 		FROM v_sq1_main_human_process v;
 
 -- 3. 逐年計算各年齡區間的平均年齡(男女分開計算)、各車種駕駛人平均年齡(各年齡層分開計算)，正式存成Mart層
-CREATE TABLE IF NOT EXISTS mart_partyA_road_user_features AS
+CREATE TABLE IF NOT EXISTS mart_yearly_partyA_road_user_features AS
 	WITH partitioned_avgs AS (
 		SELECT 
 				`year`,
