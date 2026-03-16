@@ -1,9 +1,34 @@
 import streamlit as st
-# 🌟 保留原註解：因為目前不顯示地圖，先將 st_folium 註解掉以節省資源
-# from streamlit_folium import st_folium 
 import core.c_data_service as ds
 import core.c_ui as ui
 import time
+import streamlit as st
+
+# --- 密碼鎖檢查函數 ---
+def check_password():
+    """如果密碼正確則回傳 True"""
+    def password_entered():
+        """檢查輸入的密碼是否正確"""
+        if st.session_state["password"] == "tjr10401": # <-- 設定密碼
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # 不要儲存密碼
+        else:
+            st.session_state["password_correct"] = False
+    if "password_correct" not in st.session_state:
+        # 第一次進入，顯示密碼輸入框
+        st.text_input("請輸入專案存取密碼", type="password", on_change=password_entered, key="password")
+        return False
+    elif not st.session_state["password_correct"]:
+        # 密碼錯誤，再次顯示輸入框
+        st.text_input("密碼錯誤，請重新輸入", type="password", on_change=password_entered, key="password")
+        st.error("😕 密碼不正確")
+        return False
+    else:
+        # 密碼正確
+        return True
+# --- 執行檢查 ---
+if not check_password():
+    st.stop()  # 如果密碼沒過，停止執行後面的程式碼
 
 # 1. 頁面設定
 st.set_page_config(
@@ -59,7 +84,7 @@ def main():
     is_overview, target_market, layers = ui.render_sidebar(df_market)
 
     # =========================================================
-    # 🌟 主體排版：縮排集中視覺 (控制整體最大寬度)
+    #  主體排版：縮排集中視覺 (控制整體最大寬度)
     # =========================================================
     spacer_left, col_main, spacer_right = st.columns([0.5, 9, 0.5])
 
@@ -86,7 +111,7 @@ def main():
 
         # st.markdown("<br>", unsafe_allow_html=True)
 
-        # --- 區塊 2：核心痛點引言 (🌟 改動 1：滿版顯示) ---
+        # --- 區塊 2：核心痛點引言 (1：滿版顯示) ---
         st.markdown("""
             <div style="background-color: rgba(254, 242, 242, 0.9); padding: 20px; border-radius: 12px; border: 1px solid #fecaca; text-align: left; margin-bottom: 30px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
                 <div style="font-size: 1.15rem; color: #b91c1c; font-weight: bold; margin-bottom: 10px;">
@@ -119,7 +144,7 @@ def main():
                 st.markdown("<h4>🏛️ 地方政府</h4>", unsafe_allow_html=True)
                 st.write("透過全台對標與 YoY 數據比較，科學化評估「人本交通」政策執行成效與未來改善空間。")
         # =========================================================
-        # 🌟 改動 2：下半部改為「橫式排列」，逐層堆疊
+        # 下半部改為「橫式排列」，逐層堆疊
         # =========================================================
         
         # --- 橫列一：數據解密 ---

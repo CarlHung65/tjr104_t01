@@ -1,0 +1,3 @@
+[client]
+# 隱藏 Streamlit 自動產生的側邊欄導航
+showSidebarNavigation = false
