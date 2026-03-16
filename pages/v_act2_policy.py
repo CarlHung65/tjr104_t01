@@ -47,10 +47,15 @@ def get_real_policy_data():
                 "臺北市": "北部", "新北市": "北部", "基隆市": "北部", "桃園市": "北部", "新竹市": "北部", "新竹縣": "北部", "宜蘭縣": "北部",
                 "臺中市": "中部", "苗栗縣": "中部", "彰化縣": "中部", "南投縣": "中部", "雲林縣": "中部",
                 "臺南市": "南部", "高雄市": "南部", "嘉義市": "南部", "嘉義縣": "南部", "屏東縣": "南部",
-                "花蓮縣": "東部", "臺東縣": "東部", "澎湖縣": "離島", "金門縣": "離島", "連江縣": "離島"
+                "花蓮縣": "東部與離島", "臺東縣": "東部與離島", "澎湖縣": "東部與離島", "金門縣": "東部與離島", "連江縣": "東部與離島"
             }
             df['region'] = df['city'].map(region_map).fillna("其他")
+            
+            # 處理附屬離島特例
+            if 'nightmarket_name' in df.columns:
+                df.loc[df['nightmarket_name'].str.contains('琉球|蘭嶼|綠島', na=False), 'region'] = '東部與離島'
             return df
+        
     except Exception as e:
         st.error(f"Redis 讀取失敗: {e}")
     return pd.DataFrame()
@@ -81,7 +86,7 @@ def main():
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown("<h2 style='margin-bottom: 5px;'>⚖️ 禮讓行人政策成效：修法前後分析研究</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='margin-bottom: 5px;'>⚖️ 夜市周遭 - 修法前後分析研究</h2>", unsafe_allow_html=True)
     st.info("""
     💡 **數據判讀須知**：
     1. **過濾條件**：本頁僅計入夜市方圓 500 公尺核心區內涉及【行人（人與車）】之事故。

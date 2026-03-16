@@ -28,36 +28,39 @@ nm_df['nightmarket_city'] = nm_df['nightmarket_city'].str.replace('台', '臺')
 
 # 2. 區域與行政區正規化
 # 如果資料庫沒有提供 Region (北中南東)，則利用字典對應產生
-if 'District' in nm_df.columns and nm_df['District'].isin(['北部', '中部', '南部', '東部', '離島']).any():
-    nm_df['Region'] = nm_df['District'] 
+if 'District' in nm_df.columns and nm_df['District'].isin(['北部', '中部', '南部', '東部', '離島', '東部與離島']).any():
+    nm_df['Region'] = nm_df['District'].replace({'東部': '東部與離島', '離島': '東部與離島'})
 else:
     region_map = {
         "臺北市": "北部", "新北市": "北部", "基隆市": "北部", "桃園市": "北部", "新竹市": "北部", "新竹縣": "北部", "宜蘭縣": "北部",
         "臺中市": "中部", "苗栗縣": "中部", "彰化縣": "中部", "南投縣": "中部", "雲林縣": "中部",
         "臺南市": "南部", "高雄市": "南部", "嘉義市": "南部", "嘉義縣": "南部", "屏東縣": "南部",
-        "臺東縣": "東部", "花蓮縣": "東部",
-        "澎湖縣": "離島", "金門縣": "離島", "連江縣": "離島"
-    }
+        "花蓮縣": "東部與離島", "臺東縣": "東部與離島", 
+        "澎湖縣": "東部與離島", "金門縣": "東部與離島", "連江縣": "東部與離島"}
     nm_df['Region'] = nm_df['nightmarket_city'].map(region_map).fillna("其他")
 
 # 尋找可用的行政區欄位，並統一命名為 AdminDistrict
 possible_admin_cols = ['Town', 'Township', 'Area', '鄉鎮市區', 'admin_district', 'AdminDistrict']
 admin_col_found = False
 for col in possible_admin_cols:
-    if col in nm_df.columns and not nm_df[col].isin(['北部', '中部', '南部', '東部']).any():
+    if col in nm_df.columns and not nm_df[col].isin(['北部', '中部', '南部', '東部', '離島', '東部與離島']).any():
         nm_df['AdminDistrict'] = nm_df[col]
         admin_col_found = True
         break
 if not admin_col_found:
-    nm_df['AdminDistrict'] = nm_df['District'] if 'District' in nm_df.columns and not nm_df['District'].isin(['北部', '中部', '南部', '東部']).any() else "全區"
+    nm_df['AdminDistrict'] = nm_df['District'] if 'District' in nm_df.columns and not nm_df['District'].isin(['北部', '中部', '南部', '東部', '離島', '東部與離島']).any() else "全區"
 
-# 主渲染函式
+# 強制將附屬離島劃分至東部與離島 (移至 AdminDistrict 建立之後)
+nm_df.loc[nm_df['AdminDistrict'].str.contains('琉球|蘭嶼|綠島', na=False), 'Region'] = '東部與離島'
+nm_df.loc[nm_df['nightmarket_name'].str.contains('琉球|蘭嶼|綠島', na=False), 'Region'] = '東部與離島'
+
+# 3. 主渲染函式
 def act3_render():
     # 清除跨頁面殘留的 session 狀態
     if "page_data" in st.session_state:
         st.session_state["page_data"].clear()
+    header_container = st.container()
 
-    # 3. UI 選擇器設計
     # 提供兩種搜尋模式：層層篩選 vs 關鍵字直搜
     search_mode = st.radio("尋找方式：", ["🗺️ 區域層層篩選", "🔍 直接關鍵字搜尋"], horizontal=True)
     def_region, def_city, def_dist, def_market = "北部", "臺北市", "士林區", "士林夜市"
@@ -92,7 +95,7 @@ def act3_render():
         return
     nm_row = nm_match.iloc[0]
 
-    # 4. Redis 快取讀取 (效能核心)
+    # Redis 快取讀取 (效能核心)
     try:
         r = redis.Redis(connection_pool=REDIS_POOL)
         
@@ -117,7 +120,7 @@ def act3_render():
         st.warning(f"⚠️ 尚無 {selected_market} 的預先運算避險指南，請確認 Airflow 排程是否執行完成。")
         return
 
-    # 5. 變數準備
+    # 變數準備
     # 直接從懶人包提取安全指標
     stats = {
         "peak_period": market_guide.get("peak_period", "未知"),
@@ -132,20 +135,21 @@ def act3_render():
     insight_text = f"整體來看，{selected_market}最高風險集中在 {stats['danger_zone']}，最安全推薦入口為 {exit_name}。雨天事故提升 {stats['rain_increase']}%，建議避開 {stats['peak_period']}。"
     icon = random.choice(["⚠️", "🚨", "❗"])
 
-    # 6. 上半部 UI 渲染：基本資訊
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown(f"## 🚶‍♂️ {selected_market} 安心導航指南")
-    rating = nm_row.get('nightmarket_rating', '4.0')
-    st.markdown(f"**⭐ Google 評分**：{rating} 顆星  |  📍 [點擊開啟 Google Maps 導航](https://www.google.com/maps/search/?api=1&query={nm_row['nightmarket_latitude']},{nm_row['nightmarket_longitude']})")
-    st.info("💡 建議交通方式：為了您的安全，建議搭乘大眾運輸，或將車輛停放在周邊 500 公尺外的停車場再步行前往，避開人車交織熱區。")
+    # 上半部 UI 渲染：基本資訊
+    with header_container:
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown(f"## 🚶‍♂️ {selected_market} 安心導航指南")
+        rating = nm_row.get('nightmarket_rating', '4.0')
+        st.markdown(f"**⭐ Google 評分**：{rating} 顆星  |  📍 [點擊開啟 Google Maps 導航](https://www.google.com/maps/search/?api=1&query={nm_row['nightmarket_latitude']},{nm_row['nightmarket_longitude']})")
+        st.info("💡 建議交通方式：為了您的安全，建議搭乘大眾運輸，或將車輛停放在周邊 500 公尺外的停車場再步行前往，避開人車交織熱區。")
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("### ⭐ 行人安全提醒")
+    # st.markdown("#### ⭐ 行人安全提醒")
 
     # 佈局：左邊地圖，右邊路線
     col_map, col_route = st.columns([1.5, 1], gap="large")
 
-    # 7. 地圖渲染區塊
+    # 地圖渲染區塊
     with col_map:
         st.markdown(f"#### ⚡ 區段危險等級 ｜ {selected_market} 夜市推薦入口")
         
@@ -170,7 +174,7 @@ def act3_render():
             heat_data = accidents_inside[["latitude", "longitude"]].values.tolist()
             if heat_data: HeatMap(heat_data, radius=20, blur=15).add_to(m)
 
-        # 8. 呼叫 OSRM 外部 API 計算步行路線
+        # 呼叫 OSRM 外部 API 計算步行路線
         start, end = f"{center[1]},{center[0]}", f"{exit_point[1]},{exit_point[0]}"
         url = f"http://router.project-osrm.org/route/v1/foot/{start};{end}?overview=full&geometries=polyline&steps=true"
         route_instructions = []
@@ -220,7 +224,7 @@ def act3_render():
         # 渲染地圖
         st_folium(m, height=450, use_container_width=True, returned_objects=[])
 
-    # 9. 路線文字說明區塊
+    # 路線文字說明區塊
     with col_route:
         st.markdown("#### 🧭 路線說明（步行）")
         if route_instructions:
@@ -229,7 +233,7 @@ def act3_render():
         else:
             st.info("無法取得路線規劃建議。")
        
-    # 10. 底部指標卡片與總結洞察
+    # 底部指標卡片與總結洞察
     def card(title, content, color):
         st.markdown(f"<div style='padding: 16px; border-radius: 12px; background-color: {color}; color: white; box-shadow: 0 4px 8px rgba(0,0,0,0.1); height: 100%;'><h4 style='margin-top: 0; margin-bottom: 10px; color:white;'>{title}</h4><p style='font-size: 14px; line-height: 1.5; margin-bottom: 0;'>{content}</p></div>", unsafe_allow_html=True)
 

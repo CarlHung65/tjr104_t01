@@ -40,11 +40,10 @@ def get_dynamic_national_data():
     return pd.DataFrame()
 
 def get_region(city):
-    if city in GEO_ORDER[0:6]: return '北部'
-    elif city in GEO_ORDER[6:11]: return '中部'
-    elif city in GEO_ORDER[11:16]: return '南部'
-    elif city in GEO_ORDER[16:19]: return '東部'
-    else: return '離島'
+    if city in ['臺北市', '新北市', '基隆市', '桃園市', '新竹縣', '新竹市', '宜蘭縣']: return '北部'
+    elif city in ['苗栗縣', '臺中市', '彰化縣', '南投縣', '雲林縣']: return '中部'
+    elif city in ['嘉義縣', '嘉義市', '臺南市', '高雄市', '屏東縣']: return '南部'
+    else: return '東部與離島'
 
 def main():
     df_market = ds.get_all_nightmarkets()
@@ -76,7 +75,7 @@ def main():
 
     # 視覺排版：非對稱雙欄佈局
     # 左側放篩選器與圓餅圖 (佔比 1)，右側放核心數據指標與熱力圖 (佔比 2.5)
-    col_left, col_right = st.columns([1, 2.5], gap="large")
+    col_left, col_right = st.columns([0.7, 2.3], gap="large")
 
     with col_left:
         st.markdown('<div class="section-title" style="margin-bottom:8px;">切換分析視角</div>', unsafe_allow_html=True)
@@ -85,19 +84,21 @@ def main():
         # 讓使用者可以一鍵切換整頁的計算基礎。下方的變數 (metric_col, agg_func) 會根據此選擇自動變更
         mode = st.radio(
             "切換分析視角", 
-            ["綜合危險指數 (PDI)", "事故總件數", "死亡人數", "受傷人數"], 
+            ["綜合危險指數 (PDI)", "事故總件數"], # 移除"死亡人數", "受傷人數"視角  
             horizontal=True, 
             label_visibility="collapsed")
         
         # 動態連動所有計算邏輯與單位
         if mode == "綜合危險指數 (PDI)":
-            metric_col, agg_func, unit, fmt, sort_col = 'pdi_score', 'mean', "分", ",.1f", "PDI平均"
+            metric_col, agg_func, unit, fmt, sort_col = 'pdi_score', 'mean', "分", ",.2f", "PDI平均"
         elif mode == "事故總件數":
             metric_col, agg_func, unit, fmt, sort_col = 'accident_id', 'count', "件", ",.0f", "事故總數"
-        elif mode == "死亡人數":
-            metric_col, agg_func, unit, fmt, sort_col = 'death_count', 'sum', "人", ",.0f", "死亡總數"
-        else:
-            metric_col, agg_func, unit, fmt, sort_col = 'injury_count', 'sum', "人", ",.0f", "受傷總數"
+        
+        # 移除"死亡人數", "受傷人數"視角  
+        # elif mode == "死亡人數":
+        #     metric_col, agg_func, unit, fmt, sort_col = 'death_count', 'sum', "人", ",.0f", "死亡總數"
+        # else:
+        #     metric_col, agg_func, unit, fmt, sort_col = 'injury_count', 'sum', "人", ",.0f", "受傷總數"
 
         is_pdi_mode = (mode == "綜合危險指數 (PDI)")
 
@@ -149,20 +150,25 @@ def main():
             "事故總件數": "區域事故量佔比",
             "死亡人數": "區域死亡人數佔比",
             "受傷人數": "區域受傷人數佔比"}
-        st.markdown(f'<div class="section-title" style="margin-top: 20px;">🍩 {pie_title_map[mode]}</div>', unsafe_allow_html=True)
         
-        if not df_filtered.empty:
-            df_filtered['Region'] = df_filtered['nightmarket_city'].apply(get_region)
-            pie_agg_func = 'count' if mode == "事故總件數" else 'sum'
-            pie_df = df_filtered.groupby("Region")[metric_col].agg(pie_agg_func).reset_index(name='val')
+        # ------------------------------------------------------------------------------------------------------
+        # 移除左下方「區域危險佔比甜甜圈圖」
+        
+        # st.markdown(f'<div class="section-title" style="margin-top: 20px;">🍩 {pie_title_map[mode]}</div>', unsafe_allow_html=True)
+        
+        # if not df_filtered.empty:
+        #     df_filtered['Region'] = df_filtered['nightmarket_city'].apply(get_region)
+        #     pie_agg_func = 'count' if mode == "事故總件數" else 'sum'
+        #     pie_df = df_filtered.groupby("Region")[metric_col].agg(pie_agg_func).reset_index(name='val')
         
             # Plotly 甜甜圈圖
             # 透過設定 hole=0.45 把圓餅圖中間挖空。使用 color_discrete_map 綁定各區域的專屬顏色，讓全站視覺語言一致
-            color_map = {'北部': '#4fc3f7', '中部': '#ff8a65', '南部': '#ffd54f', '東部': '#aed581', '離島': '#e0e0e0'}
-            fig_pie = px.pie(pie_df, values='val', names='Region', hole=0.45, color='Region', color_discrete_map=color_map)
-            fig_pie.update_traces(textposition='inside', textinfo='percent+label', marker=dict(line=dict(color='#FFFFFF', width=2)))
-            fig_pie.update_layout(margin=dict(t=10, b=10, l=10, r=10), showlegend=False, height=250, paper_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig_pie, use_container_width=True)
+            # color_map = {'北部': '#4fc3f7', '中部': '#ff8a65', '南部': '#ffd54f', '東部': '#aed581', '離島': '#e0e0e0'}
+            # fig_pie = px.pie(pie_df, values='val', names='Region', hole=0.45, color='Region', color_discrete_map=color_map)
+            # fig_pie.update_traces(textposition='inside', textinfo='percent+label', marker=dict(line=dict(color='#FFFFFF', width=2)))
+            # fig_pie.update_layout(margin=dict(t=10, b=10, l=10, r=10), showlegend=False, height=250, paper_bgcolor="rgba(0,0,0,0)")
+            # st.plotly_chart(fig_pie, use_container_width=True)
+        # ------------------------------------------------------------------------------------------------------
 
     with col_right:
         if not df_filtered.empty:
@@ -188,7 +194,7 @@ def main():
             if is_pdi_mode:
                 c_mid = national_avg
                 mid_city_display = "全國平均線"
-                mid_tag_html = f"""<div style="font-size: 12px; color: #475569; background: #f1f5f9; padding: 2px 8px; border-radius: 4px; display: inline-block;">對標基準點</div>"""
+                mid_tag_html = f"""<div style="font-size: 12px; color: #475569; background: #f1f5f9; padding: 2px 8px; border-radius: 4px; display: inline-block;">對標基準點：國均數 {national_avg:{fmt}} {unit}</div>"""
             else:
                 c_mid = mid_val
                 mid_city_display = f"{mid_city}"
@@ -197,13 +203,18 @@ def main():
                 sign = "+" if mid_diff > 0 else ""
                 mid_color = "#ef4444" if mid_diff > 0 else ("#10b981" if mid_diff < 0 else "#475569")
                 mid_bg = "#fee2e2" if mid_diff > 0 else ("#d1fae5" if mid_diff < 0 else "#f1f5f9")
-                mid_tag_html = f"""<div style="font-size: 12px; color: {mid_color}; background: {mid_bg}; padding: 2px 8px; border-radius: 4px; display: inline-block; font-weight: bold;">{sign}{mid_diff:{fmt}} ({mid_pct:+.1f}%) vs 國均</div>"""
+                mid_prefix = "高於國均" if mid_diff > 0 else ("低於國均" if mid_diff < 0 else "持平國均")
+                mid_tag_html = f"""<div style="font-size: 12px; color: {mid_color}; background: {mid_bg}; padding: 2px 8px; border-radius: 4px; display: inline-block; font-weight: bold;">{mid_prefix} {sign}{mid_diff:{fmt}} ({mid_pct:+.1f}%)  |  國均數 {national_avg:{fmt}} {unit}</div>"""
             
             max_diff = c_max - national_avg
             max_pct = (max_diff / national_avg * 100) if national_avg > 0 else 0
+            max_sign = "+" if max_diff > 0 else ""
+            max_prefix = "高於國均" if max_diff > 0 else ("低於國均" if max_diff < 0 else "持平國均")
             
             min_diff = c_min - national_avg
             min_pct = (min_diff / national_avg * 100) if national_avg > 0 else 0
+            min_sign = "+" if min_diff > 0 else ""
+            min_prefix = "高於國均" if min_diff > 0 else ("低於國均" if min_diff < 0 else "持平國均")
 
             mode_title = "🚦 區域安全基準線 (以目前篩選條件下數據為準)"
 
@@ -218,7 +229,7 @@ def main():
                         <div style="font-size: 18px; font-weight: 900; color: #1e293b; margin-bottom: 2px;">{c_max_city}</div>
                         <div style="font-size: 24px; font-weight: bold; color: #ef4444; margin-bottom: 6px;">{c_max:{fmt}} <span style="font-size:14px; font-weight:normal;">{unit}</span></div>
                         <div style="font-size: 12px; color: #ef4444; background: #fee2e2; padding: 2px 8px; border-radius: 4px; display: inline-block; font-weight: bold;">
-                            +{max_diff:{fmt}} ({max_pct:+.1f}%) vs 國均
+                            {max_prefix} {max_sign}{max_diff:{fmt}} ({max_pct:+.1f}%)  |  國均數 {national_avg:{fmt}} {unit}
                         </div>
                     </div>
                     <div style="flex: 1; background-color: #ffffff; padding: 15px 20px; border-radius: 8px; border: 1px solid #e2e8f0; border-top: 4px solid #64748b; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
@@ -232,7 +243,7 @@ def main():
                         <div style="font-size: 18px; font-weight: 900; color: #1e293b; margin-bottom: 2px;">{c_min_city}</div>
                         <div style="font-size: 24px; font-weight: bold; color: #10b981; margin-bottom: 6px;">{c_min:{fmt}} <span style="font-size:14px; font-weight:normal;">{unit}</span></div>
                         <div style="font-size: 12px; color: #10b981; background: #d1fae5; padding: 2px 8px; border-radius: 4px; display: inline-block; font-weight: bold;">
-                            {min_diff:{fmt}} ({min_pct:+.1f}%) vs 國均
+                            {min_prefix} {min_sign}{min_diff:{fmt}} ({min_pct:+.1f}%)  |  國均數 {national_avg:{fmt}} {unit}
                         </div>
                     </div>
                 </div>
@@ -323,9 +334,7 @@ def main():
             heatmap_rank = heatmap_data.rank(ascending=False, method='min')
 
             if region_filter == "全台":
-                target_regions = ['北部', '中部', '南部', '東部', '離島']
-            elif region_filter == "東部與離島":
-                target_regions = ['東部', '離島']
+                target_regions = ['北部', '中部', '南部', '東部與離島']
             else:
                 target_regions = [region_filter]
                 
@@ -349,8 +358,8 @@ def main():
                     x=heatmap_data.columns,
                     y=heatmap_data.index,
                     colorscale='Blues', 
-                    texttemplate="<b>%{z:,.1f}</b>" if is_pdi_mode else "<b>%{z:,.0f}</b>",
-                    hovertemplate="年份: %{x}<br>縣市: %{y}<br>數值: %{z:,.1f}<extra></extra>" if is_pdi_mode else "年份: %{x}<br>縣市: %{y}<br>數值: %{z:,.0f}<extra></extra>",
+                    texttemplate="<b>%{z:,.2f}</b>" if is_pdi_mode else "<b>%{z:,.0f}</b>",
+                    hovertemplate="年份: %{x}<br>縣市: %{y}<br>數值: %{z:,.2f}<extra></extra>" if is_pdi_mode else "年份: %{x}<br>縣市: %{y}<br>數值: %{z:,.0f}<extra></extra>",
                     textfont=dict(size=14) ))
                 
                 fig_heat_val.update_layout(

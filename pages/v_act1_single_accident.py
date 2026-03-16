@@ -123,14 +123,14 @@ def main():
     """, unsafe_allow_html=True)
     
     # 範圍定義與重疊差異的免責聲明
-    st.info("💡 **資料範圍說明**：\n\n本頁提供單一夜市的**深度與大範圍環境探索**。您可以透過左側滑桿自訂分析半徑（500m ~ 3km）。\n\n*註：為避免相鄰夜市的事故重複計算，其他頁面（全台總表、縣市對標）的總數與排名，皆採用嚴格的「500m 去重複核心區」計算。因此當您拉大本頁半徑，或加總多個夜市的數值時，將因包含重疊區域及外圍幹道，而大於排行榜之淨總數。*")
+    st.info("💡 **資料範圍說明**：\n本頁提供單一夜市的**深度與大範圍環境探索**。您可以透過左側滑桿自訂分析半徑（500m ~ 3km）。\n\n*註：為避免相鄰夜市的事故重複計算，其他頁面（全台總表、縣市對標）的總數與排名，皆採用嚴格的「500m 去重複核心區」計算。因此當您拉大本頁半徑，或加總多個夜市的數值時，將因包含重疊區域及外圍幹道，而大於排行榜之淨總數。*")
     st.markdown("<hr style='margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
 
-    col_left, col_right = st.columns([1, 2.5], gap="large")
+    col_left, col_right = st.columns([0.7, 2.3], gap="large")
 
     with col_left:
         st.markdown('<div class="section-title" style="margin-top: 0;">📍 選擇分析目標</div>', unsafe_allow_html=True)
-        search_mode = st.radio("尋找方式：", ["🔍 直接關鍵字搜尋", "🗺️ 區域層層篩選"], horizontal=True, label_visibility="collapsed")
+        search_mode = st.radio("尋找方式：", ["🔍 直接關鍵字搜尋", "🗺️ 區域篩選"], horizontal=True, label_visibility="collapsed")
         
         def_market = "士林夜市"
         if search_mode == "🔍 直接關鍵字搜尋":
@@ -169,7 +169,7 @@ def main():
         with st.container(border=True):
             # 預設值保持 500m，呼應其他頁面的設定
             radius_m = st.slider("選擇分析半徑 (公尺)", min_value=500, max_value=3000, step=500, value=500)
-            heat_mode = st.radio("事故圖層時段", ["🌍 全部", "☀️ 白天 (06-18)", "🌙 夜間 (18-06)"], horizontal=True)
+            heat_mode = st.radio("事故圖層時段", ["全部", "白天 (06-18)", "夜間 (18-06)"], horizontal=True)
 
         radius_km = radius_m / 1000.0
         with st.spinner(f"正在載入 {sel_market} 周邊資料..."):
@@ -235,38 +235,41 @@ def main():
     dark_ratio = df_radar["is_dark"].mean() * 100 if total_count > 0 else 0
     wet_ratio = df_radar["is_wet"].mean() * 100 if total_count > 0 else 0
 
-    with col_left:
-        st.markdown("<hr style='margin-top:15px; margin-bottom:15px;'>", unsafe_allow_html=True)
-        st.markdown("<div class='section-title' style='margin-top:0;'>📈 歷年季度事故趨勢</div>", unsafe_allow_html=True)
+    # --------------------------------------------------------------------------------------------
+    # 移除歷年季度事故趨勢圖表
+    # with col_left:
+    #     st.markdown("<hr style='margin-top:15px; margin-bottom:15px;'>", unsafe_allow_html=True)
+    #     st.markdown("<div class='section-title' style='margin-top:0;'>📈 歷年季度事故趨勢</div>", unsafe_allow_html=True)
         
-        # Altair 雙軸圖表 (Dual-axis chart)
-        # 用長條圖 (mark_bar) 表示死亡人數，折線圖 (mark_line) 表示總事故數與受傷人數
-        # 利用 resolve_scale(y='independent') 讓兩者的 Y 軸互不影響，同時呈現在同一個畫布上
-        df_t = df_filtered.copy()
-        df_t['年季'] = df_t['accident_datetime'].dt.year.astype(str) + " Q" + df_t['accident_datetime'].dt.quarter.astype(str)
-        trend_grp = df_t.groupby('年季').agg(
-            事故總數=('accident_id', 'count'), 
-            受傷人數=('injury_count', 'sum'), 
-            死亡人數=('death_count', 'sum')
-        ).reset_index()
+    #     # Altair 雙軸圖表 (Dual-axis chart)
+    #     # 用長條圖 (mark_bar) 表示死亡人數，折線圖 (mark_line) 表示總事故數與受傷人數
+    #     # 利用 resolve_scale(y='independent') 讓兩者的 Y 軸互不影響，同時呈現在同一個畫布上
+    #     df_t = df_filtered.copy()
+    #     df_t['年季'] = df_t['accident_datetime'].dt.year.astype(str) + " Q" + df_t['accident_datetime'].dt.quarter.astype(str)
+    #     trend_grp = df_t.groupby('年季').agg(
+    #         事故總數=('accident_id', 'count'), 
+    #         受傷人數=('injury_count', 'sum'), 
+    #         死亡人數=('death_count', 'sum')
+    #     ).reset_index()
         
-        if not trend_grp.empty:
-            bar = alt.Chart(trend_grp).mark_bar(opacity=0.4, color='#dc2626', size=15).encode(
-                x=alt.X('年季:N', title=None, axis=alt.Axis(labelAngle=-45)),
-                y=alt.Y('死亡人數:Q', title='死亡人數', axis=alt.Axis(orient='right', grid=False, titleColor='#dc2626', labelColor='#dc2626')),
-                tooltip=['年季', '死亡人數']
-            )
-            trend_m = trend_grp.melt(id_vars=['年季'], value_vars=['事故總數', '受傷人數'], var_name='類別', value_name='數量')
-            line = alt.Chart(trend_m).mark_line(point=True, strokeWidth=3).encode(
-                x=alt.X('年季:N', title=None), 
-                y=alt.Y('數量:Q', title='件數/受傷人數', axis=alt.Axis(grid=True)), 
-                color=alt.Color('類別:N', scale=alt.Scale(domain=['事故總數', '受傷人數'], range=['#3b82f6', '#f59e0b']), legend=alt.Legend(orient="top", title=None)),
-                tooltip=['年季', '類別', '數量']
-            )
-            dual_chart = alt.layer(bar, line).resolve_scale(y='independent').properties(height=260)
-            st.altair_chart(dual_chart, use_container_width=True)
-        else:
-            st.info("無趨勢數據")
+    #     if not trend_grp.empty:
+    #         bar = alt.Chart(trend_grp).mark_bar(opacity=0.4, color='#dc2626', size=15).encode(
+    #             x=alt.X('年季:N', title=None, axis=alt.Axis(labelAngle=-45)),
+    #             y=alt.Y('死亡人數:Q', title='死亡人數', axis=alt.Axis(orient='right', grid=False, titleColor='#dc2626', labelColor='#dc2626')),
+    #             tooltip=['年季', '死亡人數']
+    #         )
+    #         trend_m = trend_grp.melt(id_vars=['年季'], value_vars=['事故總數', '受傷人數'], var_name='類別', value_name='數量')
+    #         line = alt.Chart(trend_m).mark_line(point=True, strokeWidth=3).encode(
+    #             x=alt.X('年季:N', title=None), 
+    #             y=alt.Y('數量:Q', title='件數/受傷人數', axis=alt.Axis(grid=True)), 
+    #             color=alt.Color('類別:N', scale=alt.Scale(domain=['事故總數', '受傷人數'], range=['#3b82f6', '#f59e0b']), legend=alt.Legend(orient="top", title=None)),
+    #             tooltip=['年季', '類別', '數量']
+    #         )
+    #         dual_chart = alt.layer(bar, line).resolve_scale(y='independent').properties(height=260)
+    #         st.altair_chart(dual_chart, use_container_width=True)
+    #     else:
+    #         st.info("無趨勢數據")
+    # --------------------------------------------------------------------------------------------
 
     with col_right:
         # 取得全國 500m 標準排行榜資料，用於頂部四張卡片
@@ -316,29 +319,29 @@ def main():
                         curr_pdi_base = curr_row.iloc[0]['pdi_mean']
                         curr_cnt_base = curr_row.iloc[0]['acc_count']
 
-        st.markdown(f"<div style='font-size:16px; font-weight:bold; color:#1f2937; margin-bottom:10px;'>🚦 {target_market['City']} 與全國安全基準對標 (依據 500m 核心區標準)</div>", unsafe_allow_html=True)
+        st.markdown(f"<h4 style='margin-top:0; color:#1e293b; margin-bottom:10px;'>🚦{target_market['City']} 與全國安全基準對標 PDI (依據 500m 核心區標準)</h4>", unsafe_allow_html=True)
+
         
         # 頂部卡片全面強制顯示「500m 排行基準」，確保基準一致性
         c1, c2, c3, c4 = st.columns(4)
         with c1:
             st.markdown(f"""<div class='top-card danger'>
-                <div class='tc-title'>🚨 縣市最高風險 (天花板)</div>
+                <div class='tc-title'>🚨{target_market['City']}最高風險 (天花板)</div>
                 <div class='tc-entity'>{worst_nm}</div>
-                <div class='tc-value'>PDI平均 {worst_pdi:.1f} <span>分</span></div>
+                <div class='tc-value'>{worst_pdi:.2f} <span>分</span></div>
                 <div class='tc-sub-wrapper'><span class='tc-sub' style='background:transparent; color:#ef4444; padding:0;'></span></div>
             </div>""", unsafe_allow_html=True)
         with c2:
             st.markdown(f"""<div class='top-card neutral'>
                 <div class='tc-title'>🇹🇼 全國基準線</div>
                 <div class='tc-entity'>全國夜市平均</div>
-                <div class='tc-value'>PDI平均 {nat_avg_pdi:.1f} <span>分</span></div>
-                <div class='tc-sub-wrapper'><span class='tc-sub'>對標基準點</span></div>
+                <div class='tc-value'>{nat_avg_pdi:.2f} <span>分</span></div>
             </div>""", unsafe_allow_html=True)
         with c3:
             st.markdown(f"""<div class='top-card highlight'>
-                <div class='tc-title'>🎯 當前鎖定目標</div>
+                <div class='tc-title'>🎯 當前夜市</div>
                 <div class='tc-entity'>{sel_market}</div>
-                <div class='tc-value'>PDI平均 {curr_pdi_base:.1f} <span>分</span></div>
+                <div class='tc-value'>{curr_pdi_base:.2f} <span>分</span></div>
                 <div class='tc-sub-wrapper'>
                     <span class='tc-sub'>全國 {nat_rank_str}</span> 
                     <span class='tc-sub'>縣市 {city_rank_str}</span>
@@ -347,9 +350,9 @@ def main():
             </div>""", unsafe_allow_html=True)
         with c4:
             st.markdown(f"""<div class='top-card safe'>
-                <div class='tc-title'>🏆 縣市最佳典範 (地板)</div>
+                <div class='tc-title'>🏆{target_market['City']}最佳典範 (地板)</div>
                 <div class='tc-entity'>{best_nm}</div>
-                <div class='tc-value'>PDI平均 {best_pdi:.1f} <span>分</span></div>
+                <div class='tc-value'>{best_pdi:.2f} <span>分</span></div>
                 <div class='tc-sub-wrapper'><span class='tc-sub' style='background:transparent; color:#10b981; padding:0;'></span></div>
             </div>""", unsafe_allow_html=True)
 
@@ -360,7 +363,7 @@ def main():
         with k1:
             st.markdown(f"<div class='kpi-card' style='border-top: 4px solid #3b82f6;'><div class='kpi-title'>📌 事故總數</div><div class='kpi-value'>{total_count:,} <span style='font-size:14px; font-weight:normal;'>件</span></div></div>", unsafe_allow_html=True)
         with k2:
-            st.markdown(f"<div class='kpi-card' style='border-top: 4px solid #8b5cf6;'><div class='kpi-title'>🚦 綜合 PDI</div><div class='kpi-value'>{local_pdi:.1f} <span style='font-size:14px; font-weight:normal;'>分</span></div></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='kpi-card' style='border-top: 4px solid #8b5cf6;'><div class='kpi-title'>🚦 綜合 PDI</div><div class='kpi-value'>{local_pdi:.2f} <span style='font-size:14px; font-weight:normal;'>分</span></div></div>", unsafe_allow_html=True)
         with k3:
             st.markdown(f"<div class='kpi-card' style='border-top: 4px solid #ef4444;'><div class='kpi-title'>💀 死亡人數</div><div class='kpi-value'>{dead_count:,} <span style='font-size:14px; font-weight:normal;'>人</span></div></div>", unsafe_allow_html=True)
         with k4:
@@ -423,7 +426,7 @@ def main():
         st.markdown("<h4 style='margin-bottom: 15px; color:#1e293b;'>📊 多維度特徵剖析</h4>", unsafe_allow_html=True)
 
         chart_h = 240
-        chart_cols = st.columns(4)
+        chart_cols = st.columns(3) # 移除天氣佔比圖與欄位調整 (將原本的 4 欄改為 3 欄)
         
         with chart_cols[0]:
             # Plotly 雷達圖 (Polar Line Chart)
@@ -457,26 +460,52 @@ def main():
             )
             st.altair_chart(h_chart.properties(height=chart_h), use_container_width=True)
 
-        with chart_cols[3]:
-            # Altair 堆疊圖
-            # 以時段(白天/夜間)作為 X 軸
-            st.markdown("<div style='font-size:14px; font-weight:bold; color:#475569; text-align:center;'>🌤️ 天氣佔比</div>", unsafe_allow_html=True)
-            df_w = df_filtered.copy()
-            df_w['天氣'] = df_w['weather_condition'].apply(lambda w: '雨天' if '雨' in str(w) else '晴天' if '晴' in str(w) else '陰天' if '陰' in str(w) else '其他')
-            df_w['時段'] = df_w['Hour'].apply(lambda h: '白天' if 6 <= h < 18 else '夜間')
-            chart_w_df = df_w.groupby(['時段', '天氣']).size().reset_index(name='件數')
-            base_bar = alt.Chart(chart_w_df).encode(
-                x=alt.X('時段:N', title=None, axis=alt.Axis(labelAngle=0, labelFontSize=11)), 
-                y=alt.Y('件數:Q', title=None, axis=alt.Axis(labels=False)), 
-                color=alt.Color('天氣:N', scale=alt.Scale(domain=['晴天', '陰天', '雨天', '其他'], range=['#fcd34d', '#94a3b8', '#3b82f6', '#cbd5e1']), legend=alt.Legend(orient="bottom", title=None, labelFontSize=10))
-            )
-            text_w = base_bar.mark_text(dy=8, color='black', fontWeight='bold', size=11).encode(y=alt.Y('件數:Q', stack='zero'), text=alt.condition(alt.datum.件數 > 0, alt.Text('件數:Q'), alt.value('')))
-            st.altair_chart((base_bar.mark_bar() + text_w).properties(height=chart_h), use_container_width=True)
+        # --------------------------------------------------------------------------------------------
+        # 移除天氣佔比圖與欄位調整
+        # with chart_cols[3]:
+        #     # Altair 堆疊圖
+        #     # 以時段(白天/夜間)作為 X 軸
+        #     st.markdown("<div style='font-size:14px; font-weight:bold; color:#475569; text-align:center;'>🌤️ 天氣佔比</div>", unsafe_allow_html=True)
+        #     df_w = df_filtered.copy()
+        #     df_w['天氣'] = df_w['weather_condition'].apply(lambda w: '雨天' if '雨' in str(w) else '晴天' if '晴' in str(w) else '陰天' if '陰' in str(w) else '其他')
+        #     df_w['時段'] = df_w['Hour'].apply(lambda h: '白天' if 6 <= h < 18 else '夜間')
+        #     chart_w_df = df_w.groupby(['時段', '天氣']).size().reset_index(name='件數')
+        #     base_bar = alt.Chart(chart_w_df).encode(
+        #         x=alt.X('時段:N', title=None, axis=alt.Axis(labelAngle=0, labelFontSize=11)), 
+        #         y=alt.Y('件數:Q', title=None, axis=alt.Axis(labels=False)), 
+        #         color=alt.Color('天氣:N', scale=alt.Scale(domain=['晴天', '陰天', '雨天', '其他'], range=['#fcd34d', '#94a3b8', '#3b82f6', '#cbd5e1']), legend=alt.Legend(orient="bottom", title=None, labelFontSize=10)))
+        #     text_w = base_bar.mark_text(dy=8, color='black', fontWeight='bold', size=11).encode(y=alt.Y('件數:Q', stack='zero'), text=alt.condition(alt.datum.件數 > 0, alt.Text('件數:Q'), alt.value('')))
+        #     st.altair_chart((base_bar.mark_bar() + text_w).properties(height=chart_h), use_container_width=True)
+        # --------------------------------------------------------------------------------------------
 
+        # 歷年安全指標與排名變化
         st.markdown("<hr style='margin-top:20px; margin-bottom:20px;'>", unsafe_allow_html=True)
         st.markdown("<h4 style='margin-bottom: 10px; color:#1e293b;'>📅 歷年安全指標與排名變化</h4>", unsafe_allow_html=True)
         
-        if not df_nat.empty:
+        # 1. 取得該夜市「自訂半徑」的歷年加總 (解決死傷人數為 0 的問題)
+        df_hist_base = df_raw.copy()
+        if sel_q != "全年": df_hist_base = df_hist_base[df_hist_base['Quarter'] == int(sel_q.split()[1])]
+        if sel_m != "全部": df_hist_base = df_hist_base[df_hist_base['Month'] == int(sel_m.split()[0])]
+        if sel_w != "全部": df_hist_base = df_hist_base[df_hist_base['Weekday'] == {v: k for k, v in week_map.items()}[sel_w]]
+        if "白天" in heat_mode: df_hist_base = df_hist_base[(df_hist_base['Hour'] >= 6) & (df_hist_base['Hour'] < 18)]
+        elif "夜間" in heat_mode: df_hist_base = df_hist_base[(df_hist_base['Hour'] >= 18) | (df_hist_base['Hour'] < 6)]
+        
+        if 'pdi_score' not in df_hist_base.columns:
+            df_hist_base['weight'] = np.where((df_hist_base['Hour'] >= 17) | (df_hist_base['Hour'] == 0), 1.5, 1.0)
+            df_hist_base['pdi_score'] = (df_hist_base['death_count'] * 10 + df_hist_base['injury_count'] * 2) * df_hist_base['weight']
+
+        if not df_hist_base.empty:
+            local_hist = df_hist_base.groupby('Year').agg(
+                總事故件數=('accident_id', 'count'),
+                死亡人數=('death_count', 'sum'),
+                受傷人數=('injury_count', 'sum'),
+                平均_PDI=('pdi_score', 'mean')
+            ).reset_index()
+        else:
+            local_hist = pd.DataFrame()
+
+        # 2. 取得全國 500m 基準的排名並合併
+        if not df_nat.empty and not local_hist.empty:
             df_nat_hist = df_nat.copy()
             if sel_q != "全年": df_nat_hist = df_nat_hist[df_nat_hist['Quarter'] == int(sel_q.split()[1])]
             if sel_m != "全部": df_nat_hist = df_nat_hist[df_nat_hist['Month'] == int(sel_m.split()[0])]
@@ -485,34 +514,30 @@ def main():
             elif "夜間" in heat_mode: df_nat_hist = df_nat_hist[(df_nat_hist['Hour'] >= 18) | (df_nat_hist['Hour'] < 6)]
             
             hist_stats = df_nat_hist.groupby(['Year', 'nightmarket_city', 'nightmarket_name']).agg(
-                pdi_mean=('pdi_score', 'mean'),
-                acc_count=('accident_id', 'count'),
-                death_sum=('death_count', 'sum'),
-                injury_sum=('injury_count', 'sum')
+                pdi_mean=('pdi_score', 'mean')
             ).reset_index()
             
             hist_stats['nat_rank'] = hist_stats.groupby('Year')['pdi_mean'].rank(ascending=False, method='min')
             hist_stats['city_rank'] = hist_stats.groupby(['Year', 'nightmarket_city'])['pdi_mean'].rank(ascending=False, method='min')
             
-            target_hist = hist_stats[hist_stats['nightmarket_name'] == sel_market].copy()
-            target_hist = target_hist.sort_values('Year', ascending=False).reset_index(drop=True)
+            target_rank = hist_stats[hist_stats['nightmarket_name'] == sel_market][['Year', 'nat_rank', 'city_rank']]
             
-            if not target_hist.empty:
-                target_hist['平均 PDI'] = target_hist['pdi_mean'].apply(lambda x: f"{x:.1f}")
-                target_hist['總事故件數'] = target_hist['acc_count'].apply(lambda x: f"{x:,.0f}")
-                target_hist['死亡人數'] = target_hist['death_sum'].astype(int)
-                target_hist['受傷人數'] = target_hist['injury_sum'].astype(int)
-                target_hist['全國排名'] = target_hist['nat_rank'].apply(lambda x: f"第 {int(x)} 名")
-                target_hist['縣市排名'] = target_hist['city_rank'].apply(lambda x: f"第 {int(x)} 名")
-                
-                final_table = target_hist[['Year', '平均 PDI', '總事故件數', '死亡人數', '受傷人數', '全國排名', '縣市排名']].rename(columns={'Year': '年份'})
-                final_table['年份'] = final_table['年份'].astype(str)
-                
-                st.dataframe(final_table, use_container_width=True, hide_index=True)
-            else:
-                st.info("該夜市尚無歷年資料 (500m 核心區內無紀錄)。")
+            final_hist = pd.merge(local_hist, target_rank, on='Year', how='left')
+            final_hist = final_hist.sort_values('Year', ascending=False).reset_index(drop=True)
+            
+            final_hist['平均 PDI'] = final_hist['平均_PDI'].apply(lambda x: f"{x:.2f}")
+            final_hist['總事故件數'] = final_hist['總事故件數'].apply(lambda x: f"{x:,.0f}")
+            final_hist['死亡人數'] = final_hist['死亡人數'].astype(int)
+            final_hist['受傷人數'] = final_hist['受傷人數'].astype(int)
+            final_hist['全國排名'] = final_hist['nat_rank'].apply(lambda x: f"第 {int(x)} 名" if pd.notna(x) else "-")
+            final_hist['縣市排名'] = final_hist['city_rank'].apply(lambda x: f"第 {int(x)} 名" if pd.notna(x) else "-")
+            
+            final_table = final_hist[['Year', '平均 PDI', '總事故件數', '死亡人數', '受傷人數', '全國排名', '縣市排名']].rename(columns={'Year': '年份'})
+            final_table['年份'] = final_table['年份'].astype(str)
+            
+            st.dataframe(final_table, use_container_width=True, hide_index=True)
         else:
-            st.info("無法獲取全台資料以計算歷年排名。")
+            st.info("該夜市尚無足夠的歷年資料。")
 
 # GROQ AI 生成單一夜市分析內容
 # 串接 Groq API，將複雜的數據(死傷數、天氣比例、尖峰時刻、主要肇因等)包裝進 Prompt
@@ -522,7 +547,7 @@ def get_ai_analysis(market_name, total, pdi, dead, hurt, top_cause, peak_hour, r
         client = Groq(api_key=os.getenv("GROQ_API_KEY"))
         prompt = f"""
         你是一個交通專家。請分析「{market_name}」數據（總字數限制150字內）。
-        數據：總事故{total}件、PDI指數{pdi:.1f}、死亡{dead}、受傷{hurt}。榜首肇因：{top_cause}。尖峰：{peak_hour}點。
+        數據：總事故{total}件、PDI指數{pdi:.2f}、死亡{dead}、受傷{hurt}。榜首肇因：{top_cause}。尖峰：{peak_hour}點。
         環境：雨天{rain:.1f}%、昏暗{dark:.1f}%、路濕{wet:.1f}%。
         最危險熱點：{risky_loc}
         
